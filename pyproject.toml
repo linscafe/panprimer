@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pangenome-primer"
+version = "0.1.0"
+description = "Design universal PCR primers against the HPRC R2 human pangenome"
+requires-python = ">=3.10"
+dependencies = [
+    "primer3-py>=2.0",
+    "pysam>=0.22",
+    "mappy>=2.26",
+    "click>=8.1",
+    "jinja2>=3.1",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+pangenome-primer = "pangenome_primer.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

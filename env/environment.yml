@@ -1,0 +1,23 @@
+name: pangenome-primer
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  # external binaries (pipeline stages shell out to these)
+  - bwa>=0.7.17
+  - minimap2>=2.26
+  - samtools>=1.19
+  - seqkit>=2.6
+  - primer3>=2.6            # primer3_core
+  # python libraries
+  - primer3-py>=2.0         # candidate generation + thermodynamic binding model
+  - pysam>=0.22
+  - mappy>=2.26             # minimap2 python bindings (input/locus alignment)
+  - click>=8.1
+  - jinja2>=3.1
+  - pyyaml>=6.0
+  - pytest>=8.0
+  - pip
+# after `mamba env create -f env/environment.yml`:
+#   mamba run -n pangenome-primer pip install -e .   (from the repo root)

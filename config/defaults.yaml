@@ -1,0 +1,44 @@
+# Default parameters. Every value here is overridable on the CLI / in a run config.
+# See CONTEXT.md for terminology and the plan for the rationale behind defaults.
+
+design:
+  product_size_min: 100
+  product_size_max: 300
+  primer_len_min: 18
+  primer_len_opt: 20
+  primer_len_max: 27
+  primer_tm_min: 57.0
+  primer_tm_opt: 60.0
+  primer_tm_max: 63.0
+  n_candidates: 20            # primer pairs Primer3 returns per locus
+  flank: 20000               # bp of CHM13 target flank projected onto each haplotype
+
+mask:
+  # positions polymorphic across the subset are excluded/penalized; the 3'-sensitive
+  # zone is weighted so Primer3 avoids putting a 3' end over a variable base.
+  min_allele_freq: 0.05      # variability at >= this frequency is masked
+  three_prime_weight_nt: 5   # extra penalty within this many bp of a candidate 3' end
+
+search:
+  backend: bwa               # genome-wide binding search backend (naive for tiny inputs)
+  max_mismatches: 3          # search budget; competence decided by the dropout model
+
+dropout:
+  mode: thermo               # thermo (primary) | rule
+  thermo:
+    tm_drop_max: 5.0         # competent if site annealing Tm >= design_tm - tm_drop_max
+    three_prime_hard_nt: 2   # mismatch within this 3' terminal window = hard dropout
+    mv_conc: 50.0
+    dv_conc: 1.5
+    dntp_conc: 0.6
+    dna_conc: 250.0
+  rule:                      # doc's conservative defaults
+    max_total_mm: 2
+    max_3prime_mm: 0
+    suffix: 5
+
+rank:
+  min_coverage: 0.95         # doc suggests >= 0.99 for general assays
+  max_off_target: 0
+  max_multi_product: 0
+  min_evaluable: 1

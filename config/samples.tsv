@@ -1,0 +1,18 @@
+# HPRC R2 haplotype subset. Deliberately diverse across superpopulations (decision 14).
+# Provenance is pinned: fill `url` and `sha256` from the HPRC Data Explorer / S3 manifest
+# before a run so results are reproducible and traceable. `release` tags the data version.
+#
+# Get real paths from: https://humanpangenome.org/data/  (HPRC Data Explorer / AWS S3)
+# One row per haplotype (hap = 1 or 2). superpop: AFR|EUR|EAS|SAS|AMR.
+#
+# sample	hap	superpop	url	sha256	release
+HG01123	1	AMR	TODO_s3_url	TODO_sha256	R2
+HG01123	2	AMR	TODO_s3_url	TODO_sha256	R2
+HG02257	1	AFR	TODO_s3_url	TODO_sha256	R2
+HG02257	2	AFR	TODO_s3_url	TODO_sha256	R2
+HG02486	1	AFR	TODO_s3_url	TODO_sha256	R2
+HG02486	2	AFR	TODO_s3_url	TODO_sha256	R2
+HG00621	1	EAS	TODO_s3_url	TODO_sha256	R2
+HG00621	2	EAS	TODO_s3_url	TODO_sha256	R2
+HG03516	1	SAS	TODO_s3_url	TODO_sha256	R2
+HG03516	2	SAS	TODO_s3_url	TODO_sha256	R2

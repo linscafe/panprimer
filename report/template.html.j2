@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pangenome primer design results</title>
+<style>
+  :root {
+    --pass:#1a7f37; --dropout:#cf222e; --off_target:#bc4c00;
+    --multi_product:#8250df; --uncertain:#6e7781; --bg:#fff; --fg:#1f2328; --line:#d0d7de;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0d1117; --fg:#e6edf3; --line:#30363d; }
+  }
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: var(--bg); color: var(--fg); }
+  h1 { font-size: 1.4rem; } h2 { font-size: 1.1rem; margin-top: 2rem; }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 0.85rem; }
+  th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; white-space: nowrap; }
+  .cell { width: 1.5rem; height: 1.5rem; text-align: center; color: #fff; font-weight: 600; }
+  .pass{background:var(--pass)} .dropout{background:var(--dropout)}
+  .off_target{background:var(--off_target)} .multi_product{background:var(--multi_product)}
+  .uncertain{background:var(--uncertain)}
+  .passed { color: var(--pass); font-weight: 700; }
+  .failed { color: var(--dropout); font-weight: 700; }
+  .legend span { display:inline-block; padding:2px 8px; border-radius:3px; color:#fff; margin-right:6px; font-size:.8rem; }
+  code { font-size: 0.8rem; }
+  .muted { color: var(--uncertain); font-size: 0.8rem; }
+</style>
+</head>
+<body>
+<h1>Pangenome PCR primer design — results</h1>
+<p class="legend">
+  {% for s in statuses %}<span class="{{ s }}">{{ s }}</span>{% endfor %}
+</p>
+{% if data.provenance %}
+<p class="muted">Provenance:
+  {% for k, v in data.provenance.items() %}<code>{{ k }}={{ v }}</code>&nbsp;{% endfor %}
+</p>
+{% endif %}
+
+<h2>Ranked primer pairs</h2>
+<div class="wrap">
+<table>
+  <tr>
+    <th>pair</th><th>verdict</th><th>coverage</th><th>unique</th>
+    <th>eval</th><th>uncertain</th><th>dropout</th><th>off-target</th><th>multi</th>
+    <th>penalty</th><th>product bp</th>
+  </tr>
+  {% for p in data.pairs %}
+  <tr>
+    <td><code>{{ p.name }}</code></td>
+    <td class="{{ 'passed' if p.passed else 'failed' }}">{{ 'PASS' if p.passed else 'reject' }}</td>
+    <td>{{ '%.1f%%' % (p.on_target_coverage * 100) }}</td>
+    <td>{{ '%.1f%%' % (p.unique_product_rate * 100) }}</td>
+    <td>{{ p.n_evaluable }}</td><td>{{ p.n_uncertain }}</td>
+    <td>{{ p.n_dropout }}</td><td>{{ p.n_off_target }}</td><td>{{ p.n_multi_product }}</td>
+    <td>{{ '%.2f' % p.primer3_penalty }}</td><td>{{ p.product_size_chm13 }}</td>
+  </tr>
+  {% if not p.passed and p.reject_reasons %}
+  <tr><td colspan="11" class="muted">rejected: {{ p.reject_reasons | join('; ') }}</td></tr>
+  {% endif %}
+  {% endfor %}
+</table>
+</div>
+
+<h2>Per-haplotype status matrix</h2>
+<div class="wrap">
+<table>
+  <tr><th>pair \ haplotype</th>{% for h in hap_order %}<th>{{ h }}</th>{% endfor %}</tr>
+  {% for p in data.pairs %}
+  <tr>
+    <td><code>{{ p.name }}</code></td>
+    {% for h in hap_order %}
+      {% set cell = status_map[p.name][h] %}
+      <td class="cell {{ cell.status }}" title="{{ cell.reason }}">{{ cell.status[0]|upper }}</td>
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+</div>
+<p class="muted">Cell letter: P=pass, D=dropout, O=off_target, M=multi_product, U=uncertain. Hover for the reason.</p>
+</body>
+</html>

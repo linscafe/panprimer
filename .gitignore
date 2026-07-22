@@ -1,0 +1,20 @@
+# Nextflow
+.nextflow/
+.nextflow.log*
+work/
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+*.pyc
+# Results / data
+results/
+selftest_out/
+*.fai
+*.bwt
+*.amb
+*.ann
+*.pac
+*.sa
+# Large reference/haplotype data lives outside the repo
+hprc-r2/
