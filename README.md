@@ -49,6 +49,17 @@ curl -O https://human-pangenomics.s3.amazonaws.com/T2T/CHM13/assemblies/analysis
 gunzip chm13v2.0.fa.gz && samtools faidx chm13v2.0.fa
 ```
 
+**Prepare the haplotypes** (download → gunzip → faidx → `bwa index`). Indexing a ~3 Gb
+assembly is slow (tens of minutes, ~5 GB RAM each), so for the full subset run this
+unattended — it is resumable and logs to `hprc-r2/prepare.log`:
+
+```bash
+bash scripts/prepare_haplotypes.sh
+```
+
+This is the local bottleneck; the containerized Nextflow `container` profile is the
+scale-out path when you outgrow one machine.
+
 ## Run
 
 Single-process (subset, local dev):
