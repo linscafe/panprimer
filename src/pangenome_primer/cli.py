@@ -95,7 +95,7 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path) -> None:
     """Design + evaluate + rank primers for a target across the haplotype subset."""
     import pysam
 
-    from .bwa_backend import ensure_index, find_binding_sites_bwa
+    from .bwa_backend import find_binding_sites_batch
     from .design import design_candidates
     from .mask import build_excluded_regions
     from .project import AmbiguousAnchor, anchor_sequence, project_locus
@@ -145,10 +145,19 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path) -> None:
     candidates = design_candidates(template, excluded, dcfg, seq_id=f"{chrom}_{start}")
     click.echo(f"designed {len(candidates)} candidate pair(s)")
 
-    # 5) evaluate each candidate across haplotypes (genome-wide bwa search)
+    # 5) evaluate each candidate across haplotypes (genome-wide bwa search).
+    # One batched search per haplotype covers all candidates' primers (index loaded once).
     thermo_default_tm = dcfg.tm_opt
     results: list[PairResult] = []
-    hap_fastas = {hid: fa for hid, fa in haplos}
+    all_primer_seqs = ([c.pair.forward.sequence for c in candidates]
+                       + [c.pair.reverse.sequence for c in candidates])
+    _site_cache: dict[str, dict] = {}
+
+    def _hap_site_cache(fasta, hid, seqs, mm):
+        if hid not in _site_cache:
+            _site_cache[hid] = find_binding_sites_batch(seqs, fasta, hid, mm)
+        return _site_cache[hid]
+
     for cand in candidates:
         design_tm = _pair_tm(cand.pair.forward.sequence, cand.pair.reverse.sequence, thermo_default_tm)
         ecfg = EvalConfig(
@@ -162,9 +171,9 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path) -> None:
             if proj.locus is None:
                 per_hap.append(evaluate_with_sites(cand.pair, hid, [], [], None, lambda *a: "", ecfg))
                 continue
-            ensure_index(fasta)
-            f_sites = find_binding_sites_bwa(cand.pair.forward.name, cand.pair.forward.sequence, fasta, hid, max_mm)
-            r_sites = find_binding_sites_bwa(cand.pair.reverse.name, cand.pair.reverse.sequence, fasta, hid, max_mm)
+            sites_by_seq = _hap_site_cache(fasta, hid, all_primer_seqs, max_mm)
+            f_sites = sites_by_seq.get(cand.pair.forward.sequence, [])
+            r_sites = sites_by_seq.get(cand.pair.reverse.sequence, [])
             fa = pysam.FastaFile(fasta)
             res = evaluate_with_sites(
                 cand.pair, hid, f_sites, r_sites, proj.locus,
@@ -302,7 +311,7 @@ def evaluate_cmd(candidates_json, proj_json, hap_fasta, config_path, mode, out) 
     """Stage 5: evaluate all candidate pairs against one haplotype (genome-wide bwa)."""
     import pysam
 
-    from .bwa_backend import ensure_index, find_binding_sites_bwa
+    from .bwa_backend import find_binding_sites_batch
     from .serialize import candidate_from_dict, locus_from_dict, result_to_dict
 
     raw = cfgmod.load_raw(config_path)
@@ -322,7 +331,9 @@ def evaluate_cmd(candidates_json, proj_json, hap_fasta, config_path, mode, out) 
                                     EvalConfig(mode=mode))
             per_pair[c.pair.name] = result_to_dict(r)
     else:
-        ensure_index(fasta)
+        # one genome-wide bwa search for ALL primers on this haplotype (index loaded once)
+        all_seqs = [c.pair.forward.sequence for c in cands] + [c.pair.reverse.sequence for c in cands]
+        sites_by_seq = find_binding_sites_batch(all_seqs, fasta, hid, max_mm)
         fa = pysam.FastaFile(fasta)
         for c in cands:
             design_tm = _pair_tm(c.pair.forward.sequence, c.pair.reverse.sequence, dcfg.tm_opt)
@@ -332,8 +343,8 @@ def evaluate_cmd(candidates_json, proj_json, hap_fasta, config_path, mode, out) 
                 rule_cfg=cfgmod.rule_config(raw),
                 thermo_cfg=cfgmod.thermo_config(raw, design_tm),
             )
-            f_sites = find_binding_sites_bwa(c.pair.forward.name, c.pair.forward.sequence, fasta, hid, max_mm)
-            r_sites = find_binding_sites_bwa(c.pair.reverse.name, c.pair.reverse.sequence, fasta, hid, max_mm)
+            f_sites = sites_by_seq.get(c.pair.forward.sequence, [])
+            r_sites = sites_by_seq.get(c.pair.reverse.sequence, [])
             r = evaluate_with_sites(c.pair, hid, f_sites, r_sites, locus,
                                     lambda c2, s, e, _fa=fa: _fa.fetch(c2, s, e), ecfg)
             per_pair[c.pair.name] = result_to_dict(r)
