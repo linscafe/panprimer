@@ -31,6 +31,24 @@ pangenome-primer selftest --outdir selftest_out   # synthetic mini-pangenome, al
 pytest -q                                          # engine correctness anchor
 ```
 
+## Get the data
+
+Select a diverse HPRC R2 subset (one sample per superpopulation, both haplotypes) and pin
+provenance from the official index — manifest first, then the multi-GB pull:
+
+```bash
+pangenome-primer fetch-subset --per-superpop 1            # writes config/samples.tsv (manifest)
+pangenome-primer fetch-subset --per-superpop 1 --download # pulls ~1 GB/haplotype + verifies md5
+# or explicit samples:  pangenome-primer fetch-subset --sample HG00408 --sample HG02602 --download
+```
+
+CHM13 v2.0 reference (for `--chm13`), from the same no-egress bucket:
+
+```bash
+curl -O https://human-pangenomics.s3.amazonaws.com/T2T/CHM13/assemblies/analysis_set/chm13v2.0.fa.gz
+gunzip chm13v2.0.fa.gz && samtools faidx chm13v2.0.fa
+```
+
 ## Run
 
 Single-process (subset, local dev):

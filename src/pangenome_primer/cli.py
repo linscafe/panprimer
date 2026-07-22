@@ -376,5 +376,61 @@ def aggregate_cmd(anchor_json, candidates_json, result_files, config_path, outdi
     click.echo(f"{n_pass}/{len(ranked)} pairs pass. report: {paths['html']}")
 
 
+@cli.command(name="fetch-subset")
+@click.option("--sample", "sample_ids", multiple=True,
+              help="explicit HPRC R2 sample id(s); repeatable. Overrides --per-superpop.")
+@click.option("--per-superpop", default=1, show_default=True,
+              help="samples to pick from each of AFR/EUR/EAS/SAS/AMR (diverse default)")
+@click.option("--data-dir", default="hprc-r2/assemblies", show_default=True,
+              help="where assembly FASTAs are/should be stored")
+@click.option("--out", "out_path", default="config/samples.tsv", show_default=True)
+@click.option("--download/--manifest-only", default=False,
+              help="actually download (multi-GB each) + verify md5, or just write the manifest")
+@click.option("--limit", default=0, help="cap number of haplotypes (0 = no cap)")
+def fetch_subset_cmd(sample_ids, per_superpop, data_dir, out_path, download, limit) -> None:
+    """Select a diverse HPRC R2 haplotype subset and write config/samples.tsv.
+
+    Default is manifest-only: fetch the official index + sample metadata, pick the subset,
+    pin provenance (md5 + S3 URL + accession), and write the manifest. Pass --download to
+    pull the assemblies (≈1 GB each) into --data-dir and verify their md5s."""
+    from . import hprc
+
+    click.echo("fetching HPRC R2 assembly index + sample metadata ...")
+    records = hprc.load_records()
+    if sample_ids:
+        chosen = hprc.select_samples(records, list(sample_ids))
+        if not chosen:
+            raise click.ClickException(f"no R2 haplotypes for samples: {list(sample_ids)}")
+    else:
+        chosen = hprc.select_diverse(records, per_superpop=per_superpop)
+    if limit:
+        chosen = chosen[:limit]
+
+    click.echo(f"selected {len(chosen)} haplotype(s):")
+    for r in chosen:
+        click.echo(f"  {r.hap_id:18s} {r.superpop:4s} {r.population:6s} {r.assembly_url}")
+
+    md5s: dict[str, str] = {}
+    if download:
+        for r in chosen:
+            click.echo(f"downloading {r.hap_id} ...")
+            hprc.download_haplotype(r, data_dir)
+            md5s[r.hap_id] = hprc.fetch_md5(r)
+            click.echo(f"  ok -> {r.local_path(data_dir)}")
+    else:
+        click.echo("pinning md5s (manifest-only; no assembly download) ...")
+        for r in chosen:
+            try:
+                md5s[r.hap_id] = hprc.fetch_md5(r)
+            except Exception:
+                md5s[r.hap_id] = "PENDING"
+
+    hprc.write_samples_tsv(chosen, out_path, data_dir, md5s)
+    click.echo(f"\nwrote {out_path}")
+    if not download:
+        click.echo("next: `pangenome-primer fetch-subset --download` (or re-run with --download) "
+                   "to pull the assemblies before `run`/Nextflow.")
+
+
 if __name__ == "__main__":
     cli()

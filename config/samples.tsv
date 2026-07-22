@@ -1,18 +1,12 @@
-# HPRC R2 haplotype subset. Deliberately diverse across superpopulations (decision 14).
-# Provenance is pinned: fill `url` and `sha256` from the HPRC Data Explorer / S3 manifest
-# before a run so results are reproducible and traceable. `release` tags the data version.
-#
-# Get real paths from: https://humanpangenome.org/data/  (HPRC Data Explorer / AWS S3)
-# One row per haplotype (hap = 1 or 2). superpop: AFR|EUR|EAS|SAS|AMR.
-#
-# sample	hap	superpop	url	sha256	release
-HG01123	1	AMR	TODO_s3_url	TODO_sha256	R2
-HG01123	2	AMR	TODO_s3_url	TODO_sha256	R2
-HG02257	1	AFR	TODO_s3_url	TODO_sha256	R2
-HG02257	2	AFR	TODO_s3_url	TODO_sha256	R2
-HG02486	1	AFR	TODO_s3_url	TODO_sha256	R2
-HG02486	2	AFR	TODO_s3_url	TODO_sha256	R2
-HG00621	1	EAS	TODO_s3_url	TODO_sha256	R2
-HG00621	2	EAS	TODO_s3_url	TODO_sha256	R2
-HG03516	1	SAS	TODO_s3_url	TODO_sha256	R2
-HG03516	2	SAS	TODO_s3_url	TODO_sha256	R2
+# HPRC R2 subset — provenance pinned. local_path is populated by `pangenome-primer fetch-subset --download`.
+sample	hap	superpop	local_path	md5	release	population	source_url	genbank
+HG01884	1	AFR	hprc-r2/assemblies/HG01884_hap1.fa.gz	785638945b339208a7a9812f3d95ee26	R2	ACB	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG01884/assemblies/release2/HG01884_pat_hprc_r2_v1.0.1.fa.gz	GCA_042028275.1
+HG01884	2	AFR	hprc-r2/assemblies/HG01884_hap2.fa.gz	b25db8c25bec145c2ccb3f8b3d7bdfd0	R2	ACB	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG01884/assemblies/release2/HG01884_mat_hprc_r2_v1.0.1.fa.gz	GCA_042027665.1
+HG00097	1	EUR	hprc-r2/assemblies/HG00097_hap1.fa.gz	c189ebb1fc378f1fe798b9bc963508a0	R2	GBR	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG00097/assemblies/release2/HG00097_hap1_hprc_r2_v1.0.1.fa.gz	GCA_044165215.1
+HG00097	2	EUR	hprc-r2/assemblies/HG00097_hap2.fa.gz	06cd427f1598d0e1f27eaec6446828c9	R2	GBR	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG00097/assemblies/release2/HG00097_hap2_hprc_r2_v1.0.1.fa.gz	GCA_044164745.1
+HG00408	1	EAS	hprc-r2/assemblies/HG00408_hap1.fa.gz	6d673afa78a11a1f28c67d16a6bb3ba4	R2	CHS	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG00408/assemblies/release2/HG00408_pat_hprc_r2_v1.0.1.fa.gz	GCA_041900255.1
+HG00408	2	EAS	hprc-r2/assemblies/HG00408_hap2.fa.gz	9e4bdad4c2a580fe9ff4ff23dbfd8005	R2	CHS	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG00408/assemblies/release2/HG00408_mat_hprc_r2_v1.0.1.fa.gz	GCA_041900245.1
+HG02602	1	SAS	hprc-r2/assemblies/HG02602_hap1.fa.gz	e46093ddc33e17bc6e2c138d18d6a55f	R2	PJL	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG02602/assemblies/release2/HG02602_pat_hprc_r2_v1.0.1.fa.gz	GCA_046000095.1
+HG02602	2	SAS	hprc-r2/assemblies/HG02602_hap2.fa.gz	fb8d7ecee0e660844302a27ec4db8d6f	R2	PJL	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG02602/assemblies/release2/HG02602_mat_hprc_r2_v1.0.1.fa.gz	GCA_046000055.1
+HG00639	1	AMR	hprc-r2/assemblies/HG00639_hap1.fa.gz	e3d920762eb775bc3162499036a9c95f	R2	PUR	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG00639/assemblies/release2/HG00639_pat_hprc_r2_v1.0.1.fa.gz	GCA_042037765.1
+HG00639	2	AMR	hprc-r2/assemblies/HG00639_hap2.fa.gz	35cd6d38c3052d881a71c615dd27236f	R2	PUR	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG00639/assemblies/release2/HG00639_mat_hprc_r2_v1.0.1.fa.gz	GCA_042037155.1
