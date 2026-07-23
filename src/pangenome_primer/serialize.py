@@ -81,15 +81,18 @@ def result_to_dict(r: HaplotypeResult) -> dict:
 
 def result_from_dict(d: dict) -> HaplotypeResult:
     # amplicons are re-hydrated shallowly (binding sites are not needed post-aggregation).
+    # haplotype_id lives on the parent result; amplicon dicts (report or inter-stage form)
+    # may omit it, so inherit it here.
+    hid = d["haplotype_id"]
     amps = [
-        Amplicon(a["haplotype_id"], a["chrom"], a["start"], a["end"], a["size"],
-                 _stub_site(a), _stub_site(a), a["on_target"])
-        for a in d["amplicons"]
+        Amplicon(a.get("haplotype_id", hid), a["chrom"], a["start"], a["end"], a["size"],
+                 _stub_site(a, hid), _stub_site(a, hid), a["on_target"])
+        for a in d.get("amplicons", [])
     ]
     return HaplotypeResult(
-        d["haplotype_id"], HaplotypeStatus(d["status"]), amps, reason=d["reason"]
+        hid, HaplotypeStatus(d["status"]), amps, reason=d.get("reason", "")
     )
 
 
-def _stub_site(a: dict) -> BindingSite:
-    return BindingSite("", a["haplotype_id"], a["chrom"], a["start"], a["end"], Strand.PLUS, 0)
+def _stub_site(a: dict, hid: str) -> BindingSite:
+    return BindingSite("", a.get("haplotype_id", hid), a["chrom"], a["start"], a["end"], Strand.PLUS, 0)

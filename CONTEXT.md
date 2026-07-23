@@ -43,8 +43,13 @@ Every evaluated haplotype gets exactly one status for a given primer pair:
 
 ## Metrics
 
-- **On-target coverage** — `pass` haplotypes ÷ **evaluable** haplotypes (evaluable =
-  total − uncertain). Always report the denominator, not just the percentage.
+- **On-target coverage** — haplotypes that produce the intended target amplicon *at all*
+  (≥1 on-target amplicon: `pass` **or** `multi_product` that includes an on-target band)
+  ÷ **evaluable** haplotypes (evaluable = total − uncertain). The anti-dropout metric:
+  "does the target amplify across diversity?" Always report the denominator, not just the
+  percentage.
 
 - **Unique product rate** — haplotypes with exactly one target-specific product and no
-  acceptable off-target ÷ evaluable haplotypes.
+  acceptable off-target (i.e. `pass`) ÷ evaluable haplotypes. The specificity metric:
+  "is the reaction clean?" Coverage can be high while this is low (target amplifies
+  everywhere but always with extra bands).

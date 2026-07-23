@@ -26,6 +26,12 @@
   .legend span { display:inline-block; padding:2px 8px; border-radius:3px; color:#fff; margin-right:6px; font-size:.8rem; }
   code { font-size: 0.8rem; }
   .muted { color: var(--uncertain); font-size: 0.8rem; }
+  .glossary { margin: 1rem 0; font-size: 0.85rem; }
+  .glossary summary { cursor: pointer; font-weight: 600; }
+  .glossary dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0.6rem 0; }
+  .glossary dt { font-weight: 700; font-family: ui-monospace, monospace; white-space: nowrap; }
+  .glossary dd { margin: 0; }
+  .glossary span { padding: 1px 5px; border-radius: 3px; color: #fff; }
 </style>
 </head>
 <body>
@@ -38,6 +44,22 @@
   {% for k, v in data.provenance.items() %}<code>{{ k }}={{ v }}</code>&nbsp;{% endfor %}
 </p>
 {% endif %}
+
+<details class="glossary">
+<summary>Column &amp; status definitions</summary>
+<dl>
+  <dt>coverage</dt><dd><b>On-target coverage</b> — fraction of <i>evaluable</i> haplotypes that produce the intended target amplicon at all (≥1 on-target band: <span class="pass">pass</span> or <span class="multi_product">multi_product</span> that includes an on-target band). The anti-dropout metric: "does the target amplify across diversity?"</dd>
+  <dt>unique</dt><dd><b>Unique product rate</b> — fraction of evaluable haplotypes that give exactly one product and it is the on-target one, no off-target (i.e. <span class="pass">pass</span>). The specificity metric: "is the reaction clean?" Coverage can be high while this is low.</dd>
+  <dt>eval</dt><dd><b>Evaluable</b> haplotypes = total − uncertain. All fractions use this as the denominator.</dd>
+  <dt>uncertain</dt><dd>Haplotypes where the locus is broken/unmappable in the assembly; excluded from the denominator, never counted as failure.</dd>
+  <dt>dropout</dt><dd>Haplotypes where the target should amplify but a binding-site SNP/indel prevents it (no on-target product).</dd>
+  <dt>off-target</dt><dd>Haplotypes whose single product forms outside the expected homologous locus.</dd>
+  <dt>multi</dt><dd>Haplotypes with more than one product (extra bands), on- and/or off-target.</dd>
+  <dt>penalty</dt><dd>Primer3 pair penalty (thermodynamic/design quality; lower is better). Used only as a tie-break among passing pairs.</dd>
+  <dt>product bp</dt><dd>Designed amplicon size on the CHM13 template.</dd>
+</dl>
+<p class="muted">Matrix cell letters: <b>P</b>=pass, <b>D</b>=dropout, <b>O</b>=off_target, <b>M</b>=multi_product, <b>U</b>=uncertain. Hover a cell for the reason.</p>
+</details>
 
 <h2>Ranked primer pairs</h2>
 <div class="wrap">

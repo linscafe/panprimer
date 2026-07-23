@@ -160,13 +160,21 @@ class PairResult:
 
     @property
     def on_target_coverage(self) -> float:
-        n = len(self.evaluable)
-        return self._count(HaplotypeStatus.PASS) / n if n else 0.0
+        """Fraction of evaluable haplotypes that produce the intended target amplicon *at
+        all* — i.e. have >=1 on-target amplicon. This credits `multi_product` haplotypes
+        (target amplifies, but with extra bands), so it answers "does the target amplify
+        across diversity?" and is distinct from `unique_product_rate`. It must NOT be
+        `pass`-only, or a locus that always throws an extra band reads as 0% coverage."""
+        ev = self.evaluable
+        if not ev:
+            return 0.0
+        covered = sum(1 for r in ev if any(a.on_target for a in r.amplicons))
+        return covered / len(ev)
 
     @property
     def unique_product_rate(self) -> float:
-        """pass haplotypes have exactly one target-specific product and no off-target,
-        which is precisely the `pass` definition here."""
+        """Fraction of evaluable haplotypes with exactly one product that is the on-target
+        one and no off-target — precisely the `pass` definition. The specificity metric."""
         n = len(self.evaluable)
         return self._count(HaplotypeStatus.PASS) / n if n else 0.0
 

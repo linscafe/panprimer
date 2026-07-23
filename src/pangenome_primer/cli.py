@@ -387,6 +387,20 @@ def aggregate_cmd(anchor_json, candidates_json, result_files, config_path, outdi
     click.echo(f"{n_pass}/{len(ranked)} pairs pass. report: {paths['html']}")
 
 
+@cli.command(name="rerender")
+@click.option("--results-json", required=True, help="an existing results.json")
+@click.option("--outdir", required=True)
+@click.option("--config", "config_path", default=None)
+def rerender_cmd(results_json, outdir, config_path) -> None:
+    """Regenerate TSV/JSON/HTML from a saved results.json with the current code — applies
+    metric/template fixes without re-running the pipeline."""
+    raw = cfgmod.load_raw(config_path)
+    paths = report.rerender_from_json(results_json, outdir, cfgmod.rank_config(raw))
+    click.echo("re-rendered:")
+    for k, v in paths.items():
+        click.echo(f"  {k}: {v}")
+
+
 @cli.command(name="fetch-subset")
 @click.option("--sample", "sample_ids", multiple=True,
               help="explicit HPRC R2 sample id(s); repeatable. Overrides --per-superpop.")

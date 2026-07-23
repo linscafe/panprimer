@@ -123,6 +123,30 @@ def write_all(
     return paths
 
 
+def rerender_from_json(json_path: str, outdir: str, rank_cfg=None) -> dict[str, str]:
+    """Rebuild PairResults from a saved results.json and re-emit all outputs with the
+    current code (metrics, template). Lets a metric/template fix be applied without
+    re-running the pipeline — the per-haplotype amplicons in the JSON carry everything the
+    recomputed metrics need."""
+    from .model import PairResult, Primer, PrimerPair
+    from .rank import RankConfig, rank_pairs
+    from .serialize import result_from_dict
+
+    d = json.loads(Path(json_path).read_text())
+    results = []
+    for p in d["pairs"]:
+        pair = PrimerPair(
+            p["name"],
+            Primer(f"{p['name']}_F", p["forward"]),
+            Primer(f"{p['name']}_R", p["reverse"]),
+            product_size_chm13=p.get("product_size_chm13", 0),
+        )
+        hrs = [result_from_dict(h) for h in p["per_haplotype"]]
+        results.append(PairResult(pair, hrs, primer3_penalty=p.get("primer3_penalty", 0.0)))
+    ranked = rank_pairs(results, rank_cfg or RankConfig())
+    return write_all(ranked, outdir, provenance=d.get("provenance"))
+
+
 def _default(o):  # pragma: no cover - json fallback for stray dataclasses
     if is_dataclass(o):
         return asdict(o)

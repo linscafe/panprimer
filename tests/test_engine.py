@@ -117,6 +117,25 @@ def test_thermo_mode_hard_gates_3prime_mismatch():
     assert dropped.per_haplotype[0].status is HaplotypeStatus.DROPOUT
 
 
+def test_coverage_and_uniqueness_diverge():
+    """On-target coverage credits multi_product haplotypes (target amplifies, extra bands);
+    unique_product_rate counts only clean single-product (pass). They must differ — the
+    real GAPDH pair7 case: target amplifies everywhere but always with off-target bands."""
+    from pangenome_primer import fixtures as fx
+
+    res = evaluate_pair(fx.demo_pair(), fx.demo_contexts(), CFG)
+    by = {r.haplotype_id: r.status for r in res.per_haplotype}
+    assert by["HG_multi#hap1"] is HaplotypeStatus.MULTI_PRODUCT
+    assert by["HG_off#hap1"] is HaplotypeStatus.OFF_TARGET
+    # evaluable = pass, drop, off, multi (uncertain excluded) = 4
+    assert len(res.evaluable) == 4
+    # coverage: pass + multi (both have an on-target amplicon) = 2/4
+    assert res.on_target_coverage == 0.5
+    # uniqueness: only pass = 1/4
+    assert res.unique_product_rate == 0.25
+    assert res.on_target_coverage != res.unique_product_rate
+
+
 def test_ranking_filters_and_orders():
     good = [ctx(f"h{i}", REGION, full_locus(f"h{i}", REGION)) for i in range(4)]
     bad = [ctx("h0", REGION, full_locus("h0", REGION))] + [
