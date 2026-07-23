@@ -80,6 +80,26 @@ def anchor_sequence(
     return Locus("CHM13v2.0", best.ctg, best.r_st, best.r_en)
 
 
+def project_target(
+    chrom: str,
+    tstart: int,
+    tend: int,
+    template_seq: str,
+    haplotype_fasta: str,
+) -> Projection:
+    """Project a CHM13 target interval onto a haplotype. Prefers the whole-genome PAF cache
+    (a fast coordinate lift; see align_cache) and falls back to on-the-fly alignment of the
+    template sequence when no cache exists."""
+    from pathlib import Path
+
+    from . import align_cache
+
+    paf = align_cache.paf_path(haplotype_fasta)
+    if Path(paf).exists():
+        return align_cache.project_from_paf(paf, chrom, tstart, tend, haplotype_fasta)
+    return project_locus(template_seq, haplotype_fasta)
+
+
 def project_locus(
     target_seq: str,
     haplotype_fasta: str,

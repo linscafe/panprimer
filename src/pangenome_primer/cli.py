@@ -91,14 +91,23 @@ def _extract_template(chm13_fasta: str, chrom: str, start: int, end: int) -> str
 @click.option("--mode", type=click.Choice(["thermo", "rule"]), default=None,
               help="dropout model (default: from config)")
 @click.option("--config", "config_path", default=None, help="params YAML (default: config/defaults.yaml)")
-def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path) -> None:
-    """Design + evaluate + rank primers for a target across the haplotype subset."""
+@click.option("--top-k", default=5, show_default=True,
+              help="genome-wide off-target search (stage B) runs only on the top-K by "
+                   "on-target coverage; 0 = all candidates")
+def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k) -> None:
+    """Design + evaluate + rank primers for a target across the haplotype subset.
+
+    Two-stage: stage A evaluates on-target coverage/dropout cheaply against each projected
+    homologous window (no genome-wide index); stage B runs the expensive genome-wide bwa
+    off-target search only on the top-K coverage candidates."""
     import pysam
 
     from .bwa_backend import find_binding_sites_batch
     from .design import design_candidates
+    from .engine import HaplotypeContext, evaluate_pair
     from .mask import build_excluded_regions
-    from .project import AmbiguousAnchor, anchor_sequence, project_locus
+    from .model import Locus
+    from .project import AmbiguousAnchor, anchor_sequence, project_target
 
     raw = cfgmod.load_raw(config_path)
     mode = mode or raw["dropout"]["mode"]
@@ -123,21 +132,20 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path) -> None:
     template = _extract_template(chm13_fasta, chrom, tstart, tend)
     click.echo(f"target anchored on CHM13 {chrom}:{start}-{end} (template {tstart}-{tend})")
 
-    # 2) project onto each haplotype
+    # 2) project onto each haplotype (PAF cache lift, or on-the-fly fallback)
     haplos = _load_haplotypes(samples_tsv)
     projections = {}
     hap_seqs = []
     for hid, fasta in haplos:
-        proj = project_locus(template, fasta)
+        proj = project_target(chrom, tstart, tend, template, fasta)
         projections[hid] = (fasta, proj)
         if proj.haplotype_seq:
             hap_seqs.append(proj.haplotype_seq)
-        click.echo(f"  {hid}: {'projected' if proj.locus else 'UNCERTAIN — ' + proj.reason}")
+        click.echo(f"  {hid}: {'projected (' + proj.reason + ')' if proj.locus else 'UNCERTAIN — ' + proj.reason}")
 
     # 3) variability mask -> excluded regions (coords relative to the template)
     excluded = build_excluded_regions(
-        template, hap_seqs,
-        min_allele_freq=raw["mask"]["min_allele_freq"],
+        template, hap_seqs, min_allele_freq=raw["mask"]["min_allele_freq"],
     )
     click.echo(f"masked {len(excluded)} variable region(s)")
 
@@ -145,57 +153,78 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path) -> None:
     candidates = design_candidates(template, excluded, dcfg, seq_id=f"{chrom}_{start}")
     click.echo(f"designed {len(candidates)} candidate pair(s)")
 
-    # 5) evaluate each candidate across haplotypes (genome-wide bwa search).
-    # One batched search per haplotype covers all candidates' primers (index loaded once).
-    thermo_default_tm = dcfg.tm_opt
-    results: list[PairResult] = []
-    all_primer_seqs = ([c.pair.forward.sequence for c in candidates]
-                       + [c.pair.reverse.sequence for c in candidates])
-    _site_cache: dict[str, dict] = {}
-
-    def _hap_site_cache(fasta, hid, seqs, mm):
-        if hid not in _site_cache:
-            _site_cache[hid] = find_binding_sites_batch(seqs, fasta, hid, mm)
-        return _site_cache[hid]
-
-    for cand in candidates:
-        design_tm = _pair_tm(cand.pair.forward.sequence, cand.pair.reverse.sequence, thermo_default_tm)
-        ecfg = EvalConfig(
+    def _ecfg(cand):
+        design_tm = _pair_tm(cand.pair.forward.sequence, cand.pair.reverse.sequence, dcfg.tm_opt)
+        return EvalConfig(
             mode=mode, max_mismatches=max_mm,
             min_product=dcfg.product_size_min, max_product=dcfg.product_size_max,
-            rule_cfg=cfgmod.rule_config(raw),
-            thermo_cfg=cfgmod.thermo_config(raw, design_tm),
+            rule_cfg=cfgmod.rule_config(raw), thermo_cfg=cfgmod.thermo_config(raw, design_tm),
         )
+
+    # 5a) STAGE A — cheap on-target coverage against each projected window (no genome-wide
+    # index). Distinguishes pass/dropout; off-target elsewhere is a stage-B concern.
+    windows = {
+        hid: HaplotypeContext(
+            hid, (proj.locus.chrom if proj.locus else "?"),
+            proj.haplotype_seq,
+            Locus(hid, proj.locus.chrom, 0, len(proj.haplotype_seq)) if proj.locus else None,
+            projection_ok=proj.locus is not None,
+        )
+        for hid, (_f, proj) in projections.items()
+    }
+    stageA = [
+        evaluate_pair(c.pair, list(windows.values()), _ecfg(c), primer3_penalty=c.penalty)
+        for c in candidates
+    ]
+    order = sorted(range(len(candidates)),
+                   key=lambda i: (-stageA[i].on_target_coverage, stageA[i].primer3_penalty))
+    k = len(candidates) if not top_k else min(top_k, len(candidates))
+    shortlist = order[:k]
+    click.echo(f"stage A done; genome-wide specificity (stage B) on top {k} by coverage")
+
+    # 5b) STAGE B — genome-wide bwa off-target search for the shortlist only. One batched
+    # search per haplotype covers all shortlisted primers (index loaded once).
+    short_cands = [candidates[i] for i in shortlist]
+    short_seqs = ([c.pair.forward.sequence for c in short_cands]
+                  + [c.pair.reverse.sequence for c in short_cands])
+    site_cache: dict[str, dict] = {}
+
+    def _sites(fasta, hid):
+        if hid not in site_cache:
+            click.echo(f"    stage B: genome-wide search on {hid} ...")
+            site_cache[hid] = find_binding_sites_batch(short_seqs, fasta, hid, max_mm)
+        return site_cache[hid]
+
+    results: list[PairResult] = []
+    for cand in short_cands:
+        ecfg = _ecfg(cand)
         per_hap = []
         for hid, (fasta, proj) in projections.items():
             if proj.locus is None:
                 per_hap.append(evaluate_with_sites(cand.pair, hid, [], [], None, lambda *a: "", ecfg))
                 continue
-            sites_by_seq = _hap_site_cache(fasta, hid, all_primer_seqs, max_mm)
-            f_sites = sites_by_seq.get(cand.pair.forward.sequence, [])
-            r_sites = sites_by_seq.get(cand.pair.reverse.sequence, [])
+            sbs = _sites(fasta, hid)
             fa = pysam.FastaFile(fasta)
-            res = evaluate_with_sites(
-                cand.pair, hid, f_sites, r_sites, proj.locus,
-                lambda c, s, e, _fa=fa: _fa.fetch(c, s, e), ecfg,
-            )
+            per_hap.append(evaluate_with_sites(
+                cand.pair, hid,
+                sbs.get(cand.pair.forward.sequence, []), sbs.get(cand.pair.reverse.sequence, []),
+                proj.locus, lambda c, s, e, _fa=fa: _fa.fetch(c, s, e), ecfg,
+            ))
             fa.close()
-            per_hap.append(res)
         results.append(PairResult(cand.pair, per_hap, primer3_penalty=cand.penalty))
 
     # 6) rank + report
     ranked = rank_pairs(results, cfgmod.rank_config(raw))
     provenance = {
-        "reference_build": "CHM13v2.0",
-        "target": f"{chrom}:{start}-{end}",
-        "dropout_mode": mode,
-        "n_haplotypes": len(haplos),
+        "reference_build": "CHM13v2.0", "target": f"{chrom}:{start}-{end}",
+        "dropout_mode": mode, "n_haplotypes": len(haplos),
+        "candidates": len(candidates), "specificity_checked": k,
     }
     paths = report.write_all(ranked, outdir, provenance)
     n_pass = sum(1 for rp in ranked if rp.passed)
-    click.echo(f"\n{n_pass}/{len(ranked)} pairs pass filters. outputs:")
-    for k, v in paths.items():
-        click.echo(f"  {k}: {v}")
+    click.echo(f"\n{n_pass}/{len(ranked)} specificity-checked pairs pass filters. outputs:")
+    for kk, v in paths.items():
+        click.echo(f"  {kk}: {v}")
 
 
 def _pair_tm(fwd: str, rev: str, fallback: float) -> float:

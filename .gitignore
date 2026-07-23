@@ -17,5 +17,6 @@ selftest_out/
 *.pac
 *.sa
 *.mmi
+*.paf
 # Large reference/haplotype data lives outside the repo
 hprc-r2/

@@ -1,0 +1,5 @@
+sample	hap	superpop	local_path	md5	release	population	source_url	genbank
+HG01884	1	AFR	hprc-r2/assemblies/HG01884_hap1.fa	785638945b339208a7a9812f3d95ee26	R2	ACB	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG01884/assemblies/release2/HG01884_pat_hprc_r2_v1.0.1.fa.gz	GCA_042028275.1
+HG00097	1	EUR	hprc-r2/assemblies/HG00097_hap1.fa	c189ebb1fc378f1fe798b9bc963508a0	R2	GBR	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG00097/assemblies/release2/HG00097_hap1_hprc_r2_v1.0.1.fa.gz	GCA_044165215.1
+HG00408	1	EAS	hprc-r2/assemblies/HG00408_hap1.fa	6d673afa78a11a1f28c67d16a6bb3ba4	R2	CHS	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG00408/assemblies/release2/HG00408_pat_hprc_r2_v1.0.1.fa.gz	GCA_041900255.1
+HG00639	1	AMR	hprc-r2/assemblies/HG00639_hap1.fa	e3d920762eb775bc3162499036a9c95f	R2	PUR	https://human-pangenomics.s3.amazonaws.com/working/HPRC/HG00639/assemblies/release2/HG00639_pat_hprc_r2_v1.0.1.fa.gz	GCA_042037765.1

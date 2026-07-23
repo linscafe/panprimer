@@ -9,12 +9,18 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 source ~/miniforge3/etc/profile.d/conda.sh && conda activate pangenome-primer
 
-TSV=config/samples.tsv
+TSV="${1:-config/samples.tsv}"
+CHM13="${2:-hprc-r2/references/chm13v2.0.fa}"
 LOG=hprc-r2/prepare.log
 mkdir -p hprc-r2/assemblies
 log(){ echo "[$(date +'%F %T')] $*" | tee -a "$LOG"; }
 
-log "=== prepare_haplotypes start ($(nproc) cpus) ==="
+log "=== prepare_haplotypes start ($(nproc) cpus) TSV=$TSV ==="
+# CHM13 minimap2 index, built once, reused for every haplotype's projection PAF
+CHM13_MMI="${CHM13%.fa}.asm5.mmi"
+if [ -s "$CHM13" ] && [ ! -s "$CHM13_MMI" ]; then
+  log "building CHM13 asm5 index ..."; minimap2 -x asm5 -d "$CHM13_MMI" "$CHM13" 2>>"$LOG"
+fi
 # columns: sample hap superpop local_path md5 release population source_url genbank
 grep -vE '^#|^sample\b' "$TSV" | while IFS=$'\t' read -r sample hap superpop local_path md5 release population url genbank; do
   [ -z "${sample:-}" ] && continue
@@ -43,10 +49,13 @@ grep -vE '^#|^sample\b' "$TSV" | while IFS=$'\t' read -r sample hap superpop loc
   else
     log "$id already indexed (bwa)"
   fi
-  # 6) minimap2 asm5 index for locus projection (cached so runs don't rebuild it in-process)
-  if [ ! -s "$fa.mmi" ]; then
-    log "$id minimap2 -d ..."
-    minimap2 -x asm5 -d "$fa.mmi" "$fa" 2>>"$LOG" && log "$id mmi done" || log "$id MINIMAP2 INDEX FAILED"
+  # 6) whole-genome CHM13<->haplotype PAF for fast projection (item 1). Built once; each
+  # query then lifts coordinates instead of aligning. Uses the prebuilt CHM13 index.
+  if [ ! -s "$fa.chm13.paf" ] && [ -s "${CHM13_MMI:-/nonexistent}" ]; then
+    t0=$(date +%s); log "$id projection PAF ..."
+    if minimap2 -x asm5 --secondary=no "$CHM13_MMI" "$fa" > "$fa.chm13.paf.part" 2>>"$LOG"; then
+      mv "$fa.chm13.paf.part" "$fa.chm13.paf"; log "$id PAF done ($(( ($(date +%s)-t0)/60 )) min)"
+    else log "$id PAF FAILED"; fi
   fi
   log "$id READY"
 done
