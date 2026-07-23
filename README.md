@@ -10,7 +10,7 @@ See [`CONTEXT.md`](CONTEXT.md) for the ubiquitous language and
 
 ## How it works
 
-Target (CHM13 region or FASTA) → anchor on **CHM13 v2.0** → project onto each haplotype
+Target (CHM13 region, GRCh38 region, or FASTA) → anchor on **CHM13 v2.0** → project onto each haplotype
 (the *expected homologous locus*) → mask variable sites → **Primer3** candidates → genome-wide
 binding search per haplotype (**bwa**) → **thermodynamic** dropout classification (3′-end
 aware) → pair into amplicons → per-haplotype status (`pass/dropout/off_target/multi_product/
@@ -69,6 +69,15 @@ pangenome-primer run --target chr1:1200-1400 --chm13 CHM13v2.0.fa \
     --samples config/samples.tsv --outdir results
 ```
 
+The `--target` may be a **CHM13 region** (default), a **GRCh38 region** (the slice is
+extracted and aligned to CHM13), or a **FASTA** of the locus:
+
+```bash
+# GRCh38 coordinates (needs a GRCh38 FASTA)
+pangenome-primer run --target chr22:42126499-42130810 --target-assembly grch38 \
+    --grch38 GRCh38.fa --chm13 CHM13v2.0.fa --samples config/samples.tsv --outdir results
+```
+
 Nextflow (parallel per-haplotype; the cloud-scale path):
 
 ```bash
@@ -100,8 +109,10 @@ provenance (URL + sha256 + release) before a real run. Tune thresholds in
   (threads via `MM_THREADS`) builds the whole-genome projection cache; the Nextflow/`run`
   projection uses it automatically when present. Too heavy for 15 GB locally — a cloud lever.
 
+- **Input**: CHM13 region, **GRCh38 region** (`--target-assembly grch38 --grch38 <fa>`;
+  extracted + aligned to CHM13), or FASTA of the locus. Ambiguous mappings fail loud.
+
 **Not yet done**
-- GRCh38-coord input (FASTA-anchor path exists; explicit GRCh38 lift not wired).
 
 **Cloud run (not yet done)**
 - Full ~460-haplotype / cloud run; the graph annotation layer; automated primer rescue.

@@ -94,8 +94,16 @@ def _extract_template(chm13_fasta: str, chrom: str, start: int, end: int) -> str
 @click.option("--top-k", default=5, show_default=True,
               help="genome-wide off-target search (stage B) runs only on the top-K by "
                    "on-target coverage; 0 = all candidates")
-def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k) -> None:
+@click.option("--target-assembly", type=click.Choice(["chm13", "grch38"]), default="chm13",
+              show_default=True, help="coordinate system of a chr:start-end --target")
+@click.option("--grch38", "grch38_fasta", default=None,
+              help="GRCh38 FASTA (required when --target-assembly grch38)")
+def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
+        target_assembly, grch38_fasta) -> None:
     """Design + evaluate + rank primers for a target across the haplotype subset.
+
+    --target accepts a CHM13 chr:start-end (default), a GRCh38 chr:start-end
+    (--target-assembly grch38 --grch38 <fa>), or a FASTA of the locus.
 
     Two-stage: stage A evaluates on-target coverage/dropout cheaply against each projected
     homologous window (no genome-wide index); stage B runs the expensive genome-wide bwa
@@ -107,7 +115,7 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k) -> N
     from .engine import HaplotypeContext, evaluate_pair
     from .mask import build_excluded_regions
     from .model import Locus
-    from .project import AmbiguousAnchor, anchor_sequence, project_target
+    from .project import AmbiguousAnchor, project_target, resolve_target
 
     raw = cfgmod.load_raw(config_path)
     mode = mode or raw["dropout"]["mode"]
@@ -115,16 +123,16 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k) -> N
     flank = raw["design"]["flank"]
     max_mm = raw["search"]["max_mismatches"]
 
-    # 1) anchor target on CHM13 -> (chrom, start, end) + template sequence with flank
-    if ":" in target and Path(target).suffix == "":
-        chrom, span = target.split(":")
-        start, end = (int(x.replace(",", "")) for x in span.split("-"))
-    else:
-        try:
-            anchor = anchor_sequence(Path(target).read_text().split("\n", 1)[1].replace("\n", ""), chm13_fasta)
-        except AmbiguousAnchor as e:
-            raise click.ClickException(str(e))
-        chrom, start, end = anchor.chrom, anchor.start, anchor.end
+    # 1) resolve target to a CHM13 (chrom, start, end) + template sequence with flank
+    try:
+        chrom, start, end = resolve_target(
+            target, chm13_fasta, assembly=target_assembly, grch38_fasta=grch38_fasta)
+    except AmbiguousAnchor as e:
+        raise click.ClickException(str(e))
+    except (ValueError, FileNotFoundError) as e:
+        raise click.ClickException(str(e))
+    if target_assembly == "grch38":
+        click.echo(f"GRCh38 {target} -> CHM13 {chrom}:{start}-{end}")
     fa = pysam.FastaFile(chm13_fasta)
     clen = fa.get_reference_length(chrom)
     fa.close()
@@ -243,34 +251,27 @@ def _pair_tm(fwd: str, rev: str, fallback: float) -> float:
 import json  # noqa: E402
 
 
-def _read_target(target: str, chm13_fasta: str):
-    from .project import AmbiguousAnchor, anchor_sequence
-
-    if ":" in target and Path(target).suffix == "":
-        chrom, span = target.split(":")
-        start, end = (int(x.replace(",", "")) for x in span.split("-"))
-        return chrom, start, end
-    seq = "".join(l for l in Path(target).read_text().splitlines() if not l.startswith(">"))
-    anchor = anchor_sequence(seq, chm13_fasta)  # may raise AmbiguousAnchor
-    return anchor.chrom, anchor.start, anchor.end
-
-
 @cli.command(name="anchor")
 @click.option("--target", required=True)
 @click.option("--chm13", "chm13_fasta", required=True)
+@click.option("--target-assembly", type=click.Choice(["chm13", "grch38"]), default="chm13")
+@click.option("--grch38", "grch38_fasta", default=None)
 @click.option("--config", "config_path", default=None)
 @click.option("--out", required=True)
-def anchor_cmd(target, chm13_fasta, config_path, out) -> None:
-    """Stage 1: normalize the target to a CHM13 anchor + template sequence."""
+def anchor_cmd(target, chm13_fasta, target_assembly, grch38_fasta, config_path, out) -> None:
+    """Stage 1: normalize the target (CHM13/GRCh38 coords or FASTA) to a CHM13 anchor."""
     import pysam
 
-    from .project import AmbiguousAnchor
+    from .project import AmbiguousAnchor, resolve_target
 
     raw = cfgmod.load_raw(config_path)
     flank = raw["design"]["flank"]
     try:
-        chrom, start, end = _read_target(target, chm13_fasta)
+        chrom, start, end = resolve_target(
+            target, chm13_fasta, assembly=target_assembly, grch38_fasta=grch38_fasta)
     except AmbiguousAnchor as e:
+        raise click.ClickException(str(e))
+    except (ValueError, FileNotFoundError) as e:
         raise click.ClickException(str(e))
     fa = pysam.FastaFile(chm13_fasta)
     clen = fa.get_reference_length(chrom)

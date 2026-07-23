@@ -14,11 +14,15 @@ process ANCHOR {
       val target
       path chm13
       path cfg
+      val assembly
+      path grch38          // assets/NO_FILE placeholder when not using GRCh38 coords
     output:
       path 'anchor.json'
     script:
+    def g = grch38.name != 'NO_FILE' ? "--grch38 ${grch38}" : ''
     """
-    pangenome-primer anchor --target '${target}' --chm13 ${chm13} --config ${cfg} --out anchor.json
+    pangenome-primer anchor --target '${target}' --chm13 ${chm13} \
+        --target-assembly ${assembly} ${g} --config ${cfg} --out anchor.json
     """
 }
 
@@ -102,10 +106,11 @@ workflow {
     if( !params.target || !params.chm13 )
         error "Required: --target 'chr:start-end'|FASTA and --chm13 <CHM13 FASTA>"
 
-    cfg   = file(params.config)
-    chm13 = file(params.chm13)
-    mode  = params.mode ?: ''
-    top_k = params.top_k ?: 5
+    cfg    = file(params.config)
+    chm13  = file(params.chm13)
+    mode   = params.mode ?: ''
+    top_k  = params.top_k ?: 5
+    grch38 = file(params.grch38 ?: "${projectDir}/assets/NO_FILE")
 
     // haplotype channel: (hap_id, fasta, [prebuilt caches]) from samples.tsv
     haplos = Channel.fromPath(params.samples)
@@ -118,7 +123,7 @@ workflow {
             tuple("${row[0]}#hap${row[1]}", fa, idx)
         }
 
-    anchor    = ANCHOR(params.target, chm13, cfg)
+    anchor    = ANCHOR(params.target, chm13, cfg, params.target_assembly ?: 'chm13', grch38)
     projected = PROJECT(anchor, haplos)                     // (hid, proj.json)
     projjson  = projected.map { it[1] }.collect()
     candidates = MASK_DESIGN(anchor, projjson)

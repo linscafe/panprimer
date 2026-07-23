@@ -12,9 +12,23 @@ without it):
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from .model import Locus
+
+_COORD_RE = re.compile(r"^([^:\s]+):([\d,]+)-([\d,]+)$")
+
+
+def parse_coords(target: str) -> tuple[str, int, int] | None:
+    """Parse 'chr:start-end' (1-based inclusive-looking, treated as 0-based half-open here)
+    into (chrom, start, end), or None if it is not a coordinate string."""
+    m = _COORD_RE.match(target.strip())
+    if not m:
+        return None
+    chrom, s, e = m.group(1), int(m.group(2).replace(",", "")), int(m.group(3).replace(",", ""))
+    return chrom, s, e
 
 
 @dataclass
@@ -78,6 +92,50 @@ def anchor_sequence(
             "specify CHM13 coordinates to disambiguate"
         )
     return Locus("CHM13v2.0", best.ctg, best.r_st, best.r_en)
+
+
+def resolve_target(
+    target: str,
+    chm13_fasta: str,
+    *,
+    assembly: str = "chm13",
+    grch38_fasta: str | None = None,
+) -> tuple[str, int, int]:
+    """Normalize any accepted target to a CHM13 (chrom, start, end):
+
+    * `chr:start-end` with assembly=chm13  -> used directly (already anchored).
+    * `chr:start-end` with assembly=grch38 -> slice extracted from `grch38_fasta`, then
+      aligned to CHM13 (same path as FASTA input).
+    * a FASTA path                          -> its sequence aligned to CHM13.
+
+    Raises AmbiguousAnchor when a sequence maps to multiple CHM13 loci (decision 2)."""
+    coords = parse_coords(target)
+    if coords is not None:
+        chrom, start, end = coords
+        if assembly == "chm13":
+            return chrom, start, end
+        if assembly == "grch38":
+            if not grch38_fasta:
+                raise ValueError("GRCh38 coordinate input requires --grch38 <GRCh38 FASTA>")
+            import pysam
+
+            fa = pysam.FastaFile(grch38_fasta)
+            if chrom not in fa.references:
+                fa.close()
+                raise ValueError(
+                    f"{chrom} not in {grch38_fasta} (naming mismatch? e.g. 'chr1' vs '1')"
+                )
+            seq = fa.fetch(chrom, start, end)
+            fa.close()
+            loc = anchor_sequence(seq, chm13_fasta)
+            return loc.chrom, loc.start, loc.end
+        raise ValueError(f"unknown target assembly: {assembly!r}")
+    # FASTA path
+    if not Path(target).exists():
+        raise FileNotFoundError(f"target is neither chr:start-end coords nor a file: {target}")
+    seq = "".join(l for l in Path(target).read_text().splitlines() if not l.startswith(">"))
+    loc = anchor_sequence(seq, chm13_fasta)
+    return loc.chrom, loc.start, loc.end
 
 
 def project_target(
