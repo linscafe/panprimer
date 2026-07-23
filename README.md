@@ -82,8 +82,23 @@ provenance (URL + sha256 + release) before a real run. Tune thresholds in
 
 ## Status
 
-- **Engine + reporting**: implemented and tested (8 unit/integration tests; `selftest`).
+**Done**
+- **Engine + reporting**: implemented and tested (18 unit/integration tests; `selftest`).
+- **Real HPRC R2 data**: `fetch-subset` downloader (official index, md5-pinned); 10-haplotype
+  subset downloaded + `bwa`-indexed; CHM13 v2.0 reference in place.
+- **Real-locus validation**: **GAPDH** (easy) → clean universal primer at 100% coverage;
+  **CYP2D6** (hard, full-specificity `--top-k 20`) → 14/20 clean, and the tool *catches both*
+  failure modes: CYP2D7 pseudogene co-amplification (multi-product) and reference-bias
+  dropout (CHM13-designed primers that fail on real haplotypes). Reports in `demo/results/`.
+- **Runtime**: two-stage search (`--top-k`: cheap coverage → genome-wide specificity on the
+  shortlist) + `.mmi`-cached projection. 3-haplotype demo ≈ 9 min, ~11.8 GB peak
+  (`demo/run_demo.sh`). See `docs/runtime_plan.md`.
 - **Nextflow pipeline**: validated end-to-end on a synthetic mini-pangenome.
-- **Not yet done**: fetching the real HPRC R2 subset; validation on real loci
-  (housekeeping gene, then a hard case like HLA/CYP2D6); GRCh38-coord input; the graph
-  annotation layer; automated primer rescue. See the plan's "out of scope (v2+)".
+
+**Not yet done**
+- Nextflow pipeline updated to the two-stage / cached-projection path (the single-process
+  `run` command is the validated real-data path today).
+- Whole-genome PAF projection at scale (opt-in `BUILD_PAF=1`; too heavy for 15 GB — cloud).
+- GRCh38-coord input (FASTA-anchor path exists; explicit GRCh38 lift not wired).
+- Full ~460-haplotype / cloud run; the graph annotation layer; automated primer rescue.
+  See the plan's "out of scope (v2+)".
