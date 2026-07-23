@@ -5,7 +5,6 @@ and the per-pair x per-haplotype status heatmap for choosing primers by eye.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, is_dataclass
 from pathlib import Path
 
 from .model import Amplicon, HaplotypeStatus
@@ -215,9 +214,3 @@ def write_verify(rows, outdir: str, provenance: dict | None = None) -> dict[str,
     html = env.get_template("verify_matrix.html.j2").render(data=data)
     Path(paths["html"]).write_text(html)
     return paths
-
-
-def _default(o):  # pragma: no cover - json fallback for stray dataclasses
-    if is_dataclass(o):
-        return asdict(o)
-    raise TypeError(o)

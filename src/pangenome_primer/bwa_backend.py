@@ -7,8 +7,6 @@ space; the trusted code decides the details. Requires `bwa` + `samtools` + `pysa
 """
 from __future__ import annotations
 
-import os
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -104,21 +102,3 @@ def find_binding_sites_batch(
         out[primer_seq] = sites
     fa.close()
     return out
-
-
-def find_binding_sites_bwa(
-    primer_name: str,
-    primer_seq: str,
-    fasta: str,
-    haplotype_id: str,
-    max_mismatches: int,
-    *,
-    slop: int = 3,
-) -> list[BindingSite]:
-    """Single-primer convenience wrapper over the batched search."""
-    sites = find_binding_sites_batch(
-        [primer_seq], fasta, haplotype_id, max_mismatches, slop=slop
-    )[primer_seq]
-    for s in sites:
-        s.primer_name = primer_name
-    return sites

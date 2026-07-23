@@ -3,7 +3,6 @@ PAF and haplotype FASTA exercise the coordinate lift on both strands."""
 from __future__ import annotations
 
 import random
-from pathlib import Path
 
 import pytest
 

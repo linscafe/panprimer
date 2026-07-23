@@ -105,11 +105,6 @@ class BindingSite:
     mismatch_offsets_3p: list[int] = field(default_factory=list)
     has_indel: bool = False
 
-    @property
-    def three_prime_pos(self) -> int:
-        """Genomic coordinate of the primer's 3' terminal base on the haplotype."""
-        return self.end - 1 if self.strand is Strand.PLUS else self.start
-
 
 @dataclass
 class Amplicon:

@@ -12,8 +12,8 @@ def load_haplotypes(samples_tsv: str) -> list[tuple[str, str]]:
         line = line.strip()
         if not line or line.startswith("#") or line.startswith("sample\t"):
             continue
-        f = line.split("\t")
-        sample, hap, _superpop, path = f[0], f[1], f[2], f[3]
+        f = line.split("\t")  # columns: sample, hap, superpop, local_path, ...
+        sample, hap, path = f[0], f[1], f[3]
         hid = f"{sample}#hap{hap}"
         if not Path(path).exists():
             raise FileNotFoundError(
