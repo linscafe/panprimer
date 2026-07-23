@@ -30,6 +30,20 @@ class AmbiguousAnchor(Exception):
     """Input maps to more than one place on CHM13; the user must disambiguate."""
 
 
+def _aligner(fasta: str, preset: str):
+    """Build a mappy aligner, preferring a prebuilt `<fasta>.mmi` if present. Building a
+    full-genome minimap2 index in-process costs minutes and several GB; a cached .mmi (see
+    scripts/prepare_haplotypes.sh) loads in seconds at the same memory footprint."""
+    import mappy
+
+    from pathlib import Path
+
+    mmi = fasta + ".mmi"
+    if Path(mmi).exists():
+        return mappy.Aligner(fn_idx_in=mmi, preset=preset)
+    return mappy.Aligner(fasta, preset=preset)
+
+
 def _confident_hits(aligner, seq: str, min_frac: float, min_mapq: int):
     hits = [
         h
@@ -48,9 +62,7 @@ def anchor_sequence(
     min_mapq: int = 30,
 ) -> Locus:
     """Locate `query_seq` on CHM13 -> anchor Locus. Raises AmbiguousAnchor on ties."""
-    import mappy
-
-    aligner = mappy.Aligner(chm13_fasta, preset="asm5")
+    aligner = _aligner(chm13_fasta, preset="asm5")
     if not aligner:
         raise RuntimeError(f"failed to index {chm13_fasta}")
     hits = _confident_hits(aligner, query_seq, min_frac, min_mapq)
@@ -76,9 +88,7 @@ def project_locus(
     min_mapq: int = 20,
 ) -> Projection:
     """Project the CHM13 target (± flank) sequence onto one haplotype assembly."""
-    import mappy
-
-    aligner = mappy.Aligner(haplotype_fasta, preset="asm5")
+    aligner = _aligner(haplotype_fasta, preset="asm5")
     if not aligner:
         return Projection(None, reason=f"failed to index {haplotype_fasta}")
     hits = _confident_hits(aligner, target_seq, min_frac, min_mapq)
