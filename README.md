@@ -70,12 +70,16 @@ pangenome-primer run --target chr1:1200-1400 --chm13 CHM13v2.0.fa \
 ```
 
 The `--target` may be a **CHM13 region** (default), a **GRCh38 region** (the slice is
-extracted and aligned to CHM13), or a **FASTA** of the locus:
+extracted from the GRCh38 reference and aligned to CHM13), or a **FASTA** of the locus:
 
 ```bash
-# GRCh38 coordinates (needs a GRCh38 FASTA)
+# GRCh38 coordinates: --grch38 is the GRCh38 *reference genome* (indexed .fai) — coordinates
+# are absolute, so the slice is fetched from it (random-access; the whole genome is not read).
 pangenome-primer run --target chr22:42126499-42130810 --target-assembly grch38 \
     --grch38 GRCh38.fa --chm13 CHM13v2.0.fa --samples config/samples.tsv --outdir results
+
+# Just a locus sequence, no coordinates? Use FASTA input (no reference genome needed):
+pangenome-primer run --target my_locus.fa --chm13 CHM13v2.0.fa --samples config/samples.tsv
 ```
 
 Nextflow (parallel per-haplotype; the cloud-scale path):

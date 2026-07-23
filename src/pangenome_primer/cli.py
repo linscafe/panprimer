@@ -97,7 +97,10 @@ def _extract_template(chm13_fasta: str, chrom: str, start: int, end: int) -> str
 @click.option("--target-assembly", type=click.Choice(["chm13", "grch38"]), default="chm13",
               show_default=True, help="coordinate system of a chr:start-end --target")
 @click.option("--grch38", "grch38_fasta", default=None,
-              help="GRCh38 FASTA (required when --target-assembly grch38)")
+              help="GRCh38 reference genome FASTA, indexed (.fai) — the whole genome (or at "
+                   "least the target's chromosome); the coord slice is fetched from it. "
+                   "Required when --target-assembly grch38. (For a bare locus sequence with "
+                   "no coordinates, use FASTA input instead: --target locus.fa.)")
 def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
         target_assembly, grch38_fasta) -> None:
     """Design + evaluate + rank primers for a target across the haplotype subset.

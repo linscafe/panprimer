@@ -104,9 +104,11 @@ def resolve_target(
     """Normalize any accepted target to a CHM13 (chrom, start, end):
 
     * `chr:start-end` with assembly=chm13  -> used directly (already anchored).
-    * `chr:start-end` with assembly=grch38 -> slice extracted from `grch38_fasta`, then
-      aligned to CHM13 (same path as FASTA input).
-    * a FASTA path                          -> its sequence aligned to CHM13.
+    * `chr:start-end` with assembly=grch38 -> slice fetched (by coordinate) from the GRCh38
+      *reference genome* `grch38_fasta`, then aligned to CHM13. Coordinates are absolute, so
+      this must be the reference (whole genome / the target's chromosome), not a locus FASTA.
+    * a FASTA path                          -> its sequence aligned to CHM13 (no reference
+      needed; use this when you have the locus sequence but no coordinates).
 
     Raises AmbiguousAnchor when a sequence maps to multiple CHM13 loci (decision 2)."""
     coords = parse_coords(target)
