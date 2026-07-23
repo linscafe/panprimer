@@ -1,0 +1,159 @@
+"""Verify mode: screen user-supplied primer pairs across the pangenome (Decision 1D).
+
+Given a CSV of (primer_id, target region, forward, reverse), report per haplotype whether the
+pair makes the intended product, its size, and any off-target products — reusing the design
+engine's binding/competence/pairing, but skipping Primer3 and masking entirely.
+"""
+from __future__ import annotations
+
+import csv
+from dataclasses import dataclass, field
+
+from . import config as cfgmod
+from .classify import pair_tm
+from .engine import EvalConfig, evaluate_with_sites
+from .model import Primer, PrimerPair
+from .project import project_target, resolve_target
+from .samples import load_haplotypes
+
+# target column aliases accepted in the CSV header (case-insensitive)
+_ALIASES = {
+    "primer_id": {"primer_id", "id", "name", "pair_id"},
+    "target": {"target", "coords", "coordinates", "grch38", "region"},
+    "forward": {"forward", "fwd", "forward_primer", "f", "left"},
+    "reverse": {"reverse", "rev", "reverse_primer", "r", "right"},
+}
+
+
+@dataclass
+class PrimerSpec:
+    primer_id: str
+    target: str      # chr:start-end (GRCh38 by default)
+    forward: str
+    reverse: str
+
+
+@dataclass
+class VerifyCell:
+    haplotype_id: str
+    status: str                                   # pass/dropout/off_target/multi_product/uncertain
+    on_target: list[int] = field(default_factory=list)   # correct amplicon sizes
+    off_target: list[int] = field(default_factory=list)  # off-target amplicon sizes
+    size_flag: bool = False                       # on-target size deviates from expected
+    reason: str = ""
+
+
+@dataclass
+class VerifyRow:
+    primer_id: str
+    forward: str
+    reverse: str
+    target_input: str
+    target_chm13: str
+    expected_size: int
+    cells: list[VerifyCell] = field(default_factory=list)
+
+
+def _resolve_headers(fieldnames: list[str]) -> dict[str, str]:
+    lut = {}
+    lowered = {fn.strip().lower(): fn for fn in fieldnames}
+    for canon, aliases in _ALIASES.items():
+        match = next((lowered[a] for a in aliases if a in lowered), None)
+        if match is None:
+            raise ValueError(
+                f"primers CSV missing a '{canon}' column (accepted: {sorted(aliases)})"
+            )
+        lut[canon] = match
+    return lut
+
+
+def parse_primer_csv(path: str) -> list[PrimerSpec]:
+    with open(path, newline="") as fh:
+        reader = csv.DictReader(fh)
+        cols = _resolve_headers(reader.fieldnames or [])
+        specs = []
+        for rec in reader:
+            if not rec.get(cols["primer_id"], "").strip():
+                continue
+            specs.append(PrimerSpec(
+                rec[cols["primer_id"]].strip(),
+                rec[cols["target"]].strip(),
+                rec[cols["forward"]].strip().upper(),
+                rec[cols["reverse"]].strip().upper(),
+            ))
+    return specs
+
+
+def run_verify(
+    specs: list[PrimerSpec],
+    chm13_fasta: str,
+    samples_tsv: str,
+    *,
+    grch38_fasta: str | None = None,
+    assembly: str = "grch38",
+    max_amplicon: int = 2000,
+    size_tolerance: int = 20,
+    mode: str | None = None,
+    config_path: str | None = None,
+    pad: int = 250,
+    progress=lambda s: None,
+) -> list[VerifyRow]:
+    import pysam
+
+    raw = cfgmod.load_raw(config_path)
+    mode = mode or raw["dropout"]["mode"]
+    max_mm = raw["search"]["max_mismatches"]
+    tm_opt = cfgmod.design_config(raw).tm_opt
+
+    haplos = load_haplotypes(samples_tsv)
+    all_seqs = [s.forward for s in specs] + [s.reverse for s in specs]
+
+    # one genome-wide bwa search per haplotype covers every pair's primers (index loaded once)
+    from .bwa_backend import find_binding_sites_batch
+    sites: dict[str, dict] = {}
+    fafiles: dict[str, "pysam.FastaFile"] = {}
+    for hid, fasta in haplos:
+        progress(f"genome-wide search on {hid} ...")
+        sites[hid] = find_binding_sites_batch(all_seqs, fasta, hid, max_mm)
+        fafiles[hid] = pysam.FastaFile(fasta)
+
+    chm = pysam.FastaFile(chm13_fasta)
+    rows: list[VerifyRow] = []
+    for spec in specs:
+        chrom, start, end = resolve_target(
+            spec.target, chm13_fasta, assembly=assembly, grch38_fasta=grch38_fasta)
+        expected_size = end - start
+        clen = chm.get_reference_length(chrom)
+        tstart, tend = max(0, start - pad), min(clen, end + pad)
+        template = chm.fetch(chrom, tstart, tend)
+        # the off-target cap bounds spurious products; never filter out a larger *correct* one
+        max_prod = max(max_amplicon, expected_size + pad)
+        pair = PrimerPair(spec.primer_id, Primer(f"{spec.primer_id}_F", spec.forward),
+                          Primer(f"{spec.primer_id}_R", spec.reverse),
+                          product_size_chm13=expected_size)
+        ecfg = EvalConfig(
+            mode=mode, max_mismatches=max_mm, min_product=40, max_product=max_prod,
+            rule_cfg=cfgmod.rule_config(raw),
+            thermo_cfg=cfgmod.thermo_config(raw, pair_tm(spec.forward, spec.reverse, tm_opt)),
+        )
+        cells = []
+        for hid, fasta in haplos:
+            proj = project_target(chrom, tstart, tend, template, fasta)
+            if proj.locus is None:
+                cells.append(VerifyCell(hid, "uncertain", reason=proj.reason))
+                continue
+            fa = fafiles[hid]
+            res = evaluate_with_sites(
+                pair, hid, sites[hid].get(spec.forward, []), sites[hid].get(spec.reverse, []),
+                proj.locus, lambda c, s, e, _fa=fa: _fa.fetch(c, s, e), ecfg)
+            on = sorted(a.size for a in res.amplicons if a.on_target)
+            off = sorted(a.size for a in res.amplicons if not a.on_target)
+            flag = any(abs(sz - expected_size) > size_tolerance for sz in on)
+            cells.append(VerifyCell(hid, res.status.value, on, off, flag, res.reason))
+        rows.append(VerifyRow(spec.primer_id, spec.forward, spec.reverse, spec.target,
+                              f"{chrom}:{start}-{end}", expected_size, cells))
+
+    chm.close()
+    for fa in fafiles.values():
+        fa.close()
+    return rows

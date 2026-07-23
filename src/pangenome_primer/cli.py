@@ -54,23 +54,12 @@ def selftest(outdir: str) -> None:
 
 def _load_haplotypes(samples_tsv: str) -> list[tuple[str, str]]:
     """Return (haplotype_id, fasta_path) from samples.tsv; requires local FASTAs present."""
-    rows: list[tuple[str, str]] = []
-    for line in Path(samples_tsv).read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or line.startswith("sample\t"):
-            continue  # skip comments and the header row
-        f = line.split("\t")
-        sample, hap, _superpop, url = f[0], f[1], f[2], f[3]
-        # url is a local path once fetched (prepare-haplotypes stage); accept local paths.
-        fasta = url
-        hid = f"{sample}#hap{hap}"
-        if not Path(fasta).exists():
-            raise click.ClickException(
-                f"haplotype FASTA not found for {hid}: {fasta}\n"
-                "Fetch the subset first (see config/samples.tsv provenance columns)."
-            )
-        rows.append((hid, fasta))
-    return rows
+    from .samples import load_haplotypes
+
+    try:
+        return load_haplotypes(samples_tsv)
+    except FileNotFoundError as e:
+        raise click.ClickException(str(e))
 
 
 def _extract_template(chm13_fasta: str, chrom: str, start: int, end: int) -> str:
@@ -466,6 +455,58 @@ def aggregate_cmd(anchor_json, candidates_json, result_files, config_path, outdi
     paths = report.write_all(ranked, outdir, provenance)
     n_pass = sum(1 for rp in ranked if rp.passed)
     click.echo(f"{n_pass}/{len(ranked)} pairs pass. report: {paths['html']}")
+
+
+@cli.command(name="verify")
+@click.option("--primers", required=True, help="CSV: primer_id,target,forward,reverse")
+@click.option("--chm13", "chm13_fasta", required=True, help="CHM13 v2.0 FASTA (indexed)")
+@click.option("--samples", "samples_tsv", required=True, help="haplotype subset TSV")
+@click.option("--target-assembly", type=click.Choice(["grch38", "chm13"]), default="grch38",
+              show_default=True, help="coordinate system of the CSV target column")
+@click.option("--grch38", "grch38_fasta", default=None,
+              help="GRCh38 reference genome FASTA (indexed), required for GRCh38 targets")
+@click.option("--outdir", default="verify_out", show_default=True)
+@click.option("--max-amplicon", default=2000, show_default=True,
+              help="max off-target product size (bp) to consider")
+@click.option("--size-tolerance", default=20, show_default=True,
+              help="flag on-target sizes deviating from the expected span by more than this")
+@click.option("--mode", type=click.Choice(["thermo", "rule"]), default=None)
+@click.option("--config", "config_path", default=None)
+def verify_cmd(primers, chm13_fasta, samples_tsv, target_assembly, grch38_fasta, outdir,
+               max_amplicon, size_tolerance, mode, config_path) -> None:
+    """Screen user-supplied primer pairs across the pangenome (no design).
+
+    Reports, per pair x haplotype, the correct amplicon size(s) and any off-target products,
+    as a matrix (green = on-target, red = off-target, grey = dropout)."""
+    from . import verify as verifymod
+    from .project import AmbiguousAnchor
+
+    specs = verifymod.parse_primer_csv(primers)
+    if not specs:
+        raise click.ClickException(f"no primer rows parsed from {primers}")
+    click.echo(f"verifying {len(specs)} primer pair(s) across the haplotypes ...")
+    try:
+        rows = verifymod.run_verify(
+            specs, chm13_fasta, samples_tsv, grch38_fasta=grch38_fasta,
+            assembly=target_assembly, max_amplicon=max_amplicon,
+            size_tolerance=size_tolerance, mode=mode, config_path=config_path,
+            progress=lambda s: click.echo(f"  {s}"))
+    except AmbiguousAnchor as e:
+        raise click.ClickException(str(e))
+    except (ValueError, FileNotFoundError) as e:
+        raise click.ClickException(str(e))
+    provenance = {"reference_build": "CHM13v2.0", "target_assembly": target_assembly,
+                  "n_pairs": len(specs), "max_amplicon": max_amplicon}
+    paths = report.write_verify(rows, outdir, provenance)
+    # brief console summary
+    for r in rows:
+        drop = sum(1 for c in r.cells if not c.on_target and c.status != "uncertain")
+        offt = sum(1 for c in r.cells if c.off_target)
+        click.echo(f"  {r.primer_id}: expected {r.expected_size}bp — "
+                   f"{drop} dropout, {offt} with off-target across {len(r.cells)} haplotypes")
+    click.echo("\noutputs:")
+    for k, v in paths.items():
+        click.echo(f"  {k}: {v}")
 
 
 @cli.command(name="rerender")

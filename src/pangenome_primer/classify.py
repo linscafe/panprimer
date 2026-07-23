@@ -37,6 +37,16 @@ class ThermoConfig:
     dna_conc: float = 250.0
 
 
+def pair_tm(forward: str, reverse: str, fallback: float = 60.0) -> float:
+    """Design Tm of a pair = the lower of the two primer melting temperatures (primer3)."""
+    try:
+        import primer3
+
+        return min(primer3.calc_tm(forward), primer3.calc_tm(reverse))
+    except Exception:
+        return fallback
+
+
 def competent_rule(site: BindingSite, cfg: RuleConfig) -> tuple[bool, str]:
     if site.has_indel:
         return False, "indel in binding site"

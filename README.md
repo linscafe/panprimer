@@ -93,6 +93,26 @@ Fill `config/samples.tsv` with the HPRC R2 subset (diverse superpopulations) and
 provenance (URL + sha256 + release) before a real run. Tune thresholds in
 `config/defaults.yaml`.
 
+## Verify existing primers
+
+Screen primer pairs you already have (no design). Input CSV — `primer_id,target,forward,reverse`
+where `target` is the **GRCh38** intended-amplicon region:
+
+```csv
+primer_id,target,forward,reverse
+GAPDH_ex,chr12:6534000-6534240,CGCTTCATGCTGCACATCTC,TTCAGTAATGGCTGCCTGGG
+```
+
+```bash
+pangenome-primer verify --primers primers.csv --chm13 CHM13v2.0.fa --grch38 GRCh38.fa \
+    --samples config/samples.tsv --outdir verify_out       # --target-assembly chm13 to use CHM13 coords
+```
+
+Produces `verify_matrix.html` (+ `verify.json`/`.tsv`): a matrix, one row per pair, one column
+per haplotype. Cells show predicted product sizes — **green** correct (on-target), **red**
+off-target, grey **dropout** (a binding-site variant kills the product), `?` not projectable.
+See `docs/verify_plan.md`.
+
 ## Status
 
 **Done**
@@ -115,6 +135,8 @@ provenance (URL + sha256 + release) before a real run. Tune thresholds in
 
 - **Input**: CHM13 region, **GRCh38 region** (`--target-assembly grch38 --grch38 <fa>`;
   extracted + aligned to CHM13), or FASTA of the locus. Ambiguous mappings fail loud.
+- **Verify mode** (`pangenome-primer verify`): screen user-supplied primer pairs from a CSV;
+  amplicon-size matrix (green on-target / red off-target / grey dropout). See `docs/verify_plan.md`.
 
 **Not yet done**
 

@@ -147,6 +147,76 @@ def rerender_from_json(json_path: str, outdir: str, rank_cfg=None) -> dict[str, 
     return write_all(ranked, outdir, provenance=d.get("provenance"))
 
 
+# --- verify mode (screen user-supplied primers) ------------------------------
+
+def verify_to_dict(rows, provenance: dict | None = None) -> dict:
+    haplotypes = [c.haplotype_id for c in rows[0].cells] if rows else []
+    return {
+        "provenance": provenance or {},
+        "haplotypes": haplotypes,
+        "rows": [
+            {
+                "primer_id": r.primer_id,
+                "forward": r.forward,
+                "reverse": r.reverse,
+                "target_input": r.target_input,
+                "target_chm13": r.target_chm13,
+                "expected_size": r.expected_size,
+                "cells": [
+                    {
+                        "haplotype_id": c.haplotype_id, "status": c.status,
+                        "on_target": c.on_target, "off_target": c.off_target,
+                        "size_flag": c.size_flag, "reason": c.reason,
+                    }
+                    for c in r.cells
+                ],
+            }
+            for r in rows
+        ],
+    }
+
+
+def _cell_text(c) -> str:
+    if c["status"] == "uncertain":
+        return "?"
+    if not c["on_target"] and not c["off_target"]:
+        return "dropout"
+    parts = [",".join(map(str, c["on_target"]))] if c["on_target"] else []
+    if c["off_target"]:
+        parts.append("off:" + ",".join(map(str, c["off_target"])))
+    return " | ".join(parts)
+
+
+def write_verify(rows, outdir: str, provenance: dict | None = None) -> dict[str, str]:
+    from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+    out = Path(outdir)
+    out.mkdir(parents=True, exist_ok=True)
+    data = verify_to_dict(rows, provenance)
+    paths = {
+        "json": str(out / "verify.json"),
+        "tsv": str(out / "verify.tsv"),
+        "html": str(out / "verify_matrix.html"),
+    }
+    Path(paths["json"]).write_text(json.dumps(data, indent=2))
+
+    cols = ["primer_id", "expected_size", "target_chm13", *data["haplotypes"]]
+    lines = ["\t".join(cols)]
+    for r in data["rows"]:
+        cellmap = {c["haplotype_id"]: c for c in r["cells"]}
+        row = [r["primer_id"], str(r["expected_size"]), r["target_chm13"]]
+        row += [_cell_text(cellmap[h]) for h in data["haplotypes"]]
+        lines.append("\t".join(row))
+    Path(paths["tsv"]).write_text("\n".join(lines) + "\n")
+
+    tpl_dir = Path(__file__).resolve().parent.parent.parent / "report"
+    env = Environment(loader=FileSystemLoader(str(tpl_dir)),
+                      autoescape=select_autoescape(["html", "j2"]))
+    html = env.get_template("verify_matrix.html.j2").render(data=data)
+    Path(paths["html"]).write_text(html)
+    return paths
+
+
 def _default(o):  # pragma: no cover - json fallback for stray dataclasses
     if is_dataclass(o):
         return asdict(o)

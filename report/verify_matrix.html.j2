@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Primer verification matrix</title>
+<style>
+  :root { --ok:#1a7f37; --off:#cf222e; --muted:#6e7781; --dev:#bc4c00;
+          --bg:#fff; --fg:#1f2328; --line:#d0d7de; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0d1117; --fg:#e6edf3; --line:#30363d; --ok:#3fb950; --off:#ff7b72; --dev:#e3873c; }
+  }
+  body { font-family: system-ui, sans-serif; margin: 2rem; background: var(--bg); color: var(--fg); }
+  h1 { font-size: 1.4rem; } h2 { font-size: 1.05rem; margin-top: 1.6rem; }
+  .wrap { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: 0.85rem; }
+  th, td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; white-space: nowrap; vertical-align: top; }
+  th.hap { writing-mode: vertical-rl; transform: rotate(180deg); font-weight: 600; }
+  .ok  { color: var(--ok);  font-weight: 700; }
+  .off { color: var(--off); font-weight: 700; }
+  .dev { text-decoration: underline dotted var(--dev); }
+  .drop { color: var(--muted); font-style: italic; }
+  .unc { color: var(--muted); }
+  .sep { color: var(--muted); }
+  code { font-size: 0.8rem; } .muted { color: var(--muted); font-size: 0.8rem; }
+  .legend span { margin-right: 1rem; }
+</style>
+</head>
+<body>
+<h1>Primer verification across the pangenome</h1>
+<p class="legend">
+  <span class="ok">correct amplicon size</span>
+  <span class="off">off-target size</span>
+  <span class="drop">dropout</span> (no correct product)
+  <span class="unc">?</span> = locus not projectable
+  <span class="dev">underlined</span> = size differs from expected
+</p>
+{% if data.provenance %}
+<p class="muted">{% for k, v in data.provenance.items() %}<code>{{ k }}={{ v }}</code>&nbsp;{% endfor %}</p>
+{% endif %}
+
+<div class="wrap">
+<table>
+  <tr>
+    <th>primer_id</th><th>expected bp</th>
+    {% for h in data.haplotypes %}<th class="hap">{{ h }}</th>{% endfor %}
+  </tr>
+  {% for r in data.rows %}
+  {% set cellmap = {} %}
+  {% for c in r.cells %}{% set _ = cellmap.__setitem__(c.haplotype_id, c) %}{% endfor %}
+  <tr>
+    <td><code>{{ r.primer_id }}</code><br><span class="muted">{{ r.target_chm13 }}</span></td>
+    <td>{{ r.expected_size }}</td>
+    {% for h in data.haplotypes %}
+      {% set c = cellmap[h] %}
+      <td title="{{ c.reason }}">
+        {% if c.status == 'uncertain' %}<span class="unc">?</span>
+        {% elif not c.on_target and not c.off_target %}<span class="drop">dropout</span>
+        {% else %}
+          {%- for s in c.on_target %}<span class="ok {{ 'dev' if c.size_flag }}">{{ s }}</span>{% if not loop.last %}<span class="sep">,</span>{% endif %}{% endfor -%}
+          {%- if c.on_target and c.off_target %} <span class="sep">|</span> {% endif -%}
+          {%- for s in c.off_target %}<span class="off">{{ s }}</span>{% if not loop.last %}<span class="sep">,</span>{% endif %}{% endfor -%}
+        {% endif %}
+      </td>
+    {% endfor %}
+  </tr>
+  {% endfor %}
+</table>
+</div>
+<p class="muted">Cells show predicted PCR product sizes (bp). Hover for the per-haplotype reason.</p>
+</body>
+</html>
