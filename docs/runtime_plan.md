@@ -24,9 +24,20 @@ query time. No per-query minimap2, no multi-GB index load.
   - `build_alignment(chm13, hap_fasta, out_paf)` → `minimap2 -cx asm5 chm13 hap` (target=CHM13).
   - `project_from_paf(paf, chrom, start, end, hap_fasta, flank)` → `Projection` (homologous
     window + haplotype sequence for the mask), handling strand.
-- `project.project_locus` prefers the PAF cache (`<hap>.chm13.paf`) and falls back to the
-  on-the-fly `.mmi` path when no cache exists.
-- Prep builds the PAF cache per haplotype (replaces the `.mmi` step as the projection index).
+- `project.project_target` prefers the PAF cache (`<hap>.chm13.paf`) and falls back to the
+  `.mmi`-cached on-the-fly path when no PAF exists.
+
+### Measured tradeoff (important)
+
+On this 15 GB box the whole-genome PAF is **too expensive as a one-time cost**: building it
+took **114 min** for one haplotype and **OOM-killed** two others (a 3 Gb-vs-3 Gb `minimap2`
+alignment with 16 threads exceeds 15 GB). The instant per-query lift is real, but the prep is
+worse than the problem here.
+
+**Resolution:** the memory-safe `.mmi` projection index (build ~12 min, loads in seconds per
+query) is the **local default**; the whole-genome **PAF is opt-in** (`BUILD_PAF=1`, capped
+threads) and only worth it on high-RAM / cloud where the one-time alignment is affordable.
+Both code paths ship; `project_target` uses whichever cache is present.
 
 ## Item 2 — Two-stage search (cheap on-target, then expensive off-target)
 

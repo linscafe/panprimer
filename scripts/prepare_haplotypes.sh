@@ -49,13 +49,20 @@ grep -vE '^#|^sample\b' "$TSV" | while IFS=$'\t' read -r sample hap superpop loc
   else
     log "$id already indexed (bwa)"
   fi
-  # 6) whole-genome CHM13<->haplotype PAF for fast projection (item 1). Built once; each
-  # query then lifts coordinates instead of aligning. Uses the prebuilt CHM13 index.
-  if [ ! -s "$fa.chm13.paf" ] && [ -s "${CHM13_MMI:-/nonexistent}" ]; then
-    t0=$(date +%s); log "$id projection PAF ..."
-    if minimap2 -x asm5 --secondary=no "$CHM13_MMI" "$fa" > "$fa.chm13.paf.part" 2>>"$LOG"; then
+  # 6) projection cache. Default = a cheap, memory-safe minimap2 index (.mmi) that the
+  # per-query projection loads in seconds. The whole-genome PAF (instant per-query lift, but
+  # a ~1-2 hr, >15 GB alignment per haplotype) is opt-in via BUILD_PAF=1 and only worth it
+  # on high-RAM / cloud. project_target prefers a PAF when present, else the .mmi.
+  if [ -s "$fa.chm13.paf" ]; then
+    log "$id projection PAF present"
+  elif [ "${BUILD_PAF:-0}" = "1" ] && [ -s "${CHM13_MMI:-/nonexistent}" ]; then
+    t0=$(date +%s); log "$id projection PAF (BUILD_PAF, -t4) ..."
+    if minimap2 -x asm5 -t 4 --secondary=no "$CHM13_MMI" "$fa" > "$fa.chm13.paf.part" 2>>"$LOG"; then
       mv "$fa.chm13.paf.part" "$fa.chm13.paf"; log "$id PAF done ($(( ($(date +%s)-t0)/60 )) min)"
-    else log "$id PAF FAILED"; fi
+    else log "$id PAF FAILED"; rm -f "$fa.chm13.paf.part"; fi
+  elif [ ! -s "$fa.mmi" ]; then
+    t0=$(date +%s); log "$id minimap2 -d (projection index) ..."
+    minimap2 -x asm5 -d "$fa.mmi" "$fa" 2>>"$LOG" && log "$id mmi done ($(( ($(date +%s)-t0)/60 )) min)" || log "$id MMI FAILED"
   fi
   log "$id READY"
 done
