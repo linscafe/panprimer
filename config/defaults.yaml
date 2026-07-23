@@ -1,46 +1,50 @@
 # Default parameters. Every value here is overridable on the CLI / in a run config.
-# See CONTEXT.md for terminology and the plan for the rationale behind defaults.
+# See CONTEXT.md for terminology and docs/config_reference.md for full explanations.
 
 design:
-  product_size_min: 100
-  product_size_max: 300
-  primer_len_min: 18
-  primer_len_opt: 20
-  primer_len_max: 27
-  primer_tm_min: 57.0
-  primer_tm_opt: 60.0
-  primer_tm_max: 63.0
-  n_candidates: 20            # primer pairs Primer3 returns per locus
+  product_size_min: 100      # min amplicon (PCR product) size, bp
+  product_size_max: 300      # max amplicon size, bp
+  primer_len_min: 18         # min primer length, nt
+  primer_len_opt: 20         # optimal primer length, nt
+  primer_len_max: 27         # max primer length, nt
+  primer_tm_min: 57.0        # min primer melting temperature (Tm), C
+  primer_tm_opt: 60.0        # optimal primer Tm, C
+  primer_tm_max: 63.0        # max primer Tm, C
+  n_candidates: 20           # primer pairs Primer3 returns per locus
   flank: 20000               # bp of CHM13 target flank projected onto each haplotype
 
 mask:
   # positions polymorphic across the subset are excluded/penalized; the 3'-sensitive
   # zone is weighted so Primer3 avoids putting a 3' end over a variable base.
-  min_allele_freq: 0.05      # variability at >= this frequency is masked
-  three_prime_weight_nt: 5   # extra penalty within this many bp of a candidate 3' end
+  min_allele_freq: 0.05      # mask template positions varying in >= this fraction of haplotypes
+  three_prime_weight_nt: 5   # extra-penalty zone width near a candidate 3' end, nt
   merge_gap: 25              # coalesce variant clusters within this many bp into one zone
-  max_regions: 200           # Primer3 caps SEQUENCE_EXCLUDED_REGION at 200
+  max_regions: 200           # cap on masked intervals (Primer3 SEQUENCE_EXCLUDED_REGION max)
 
 search:
   backend: bwa               # genome-wide binding search backend (naive for tiny inputs)
-  max_mismatches: 3          # search budget; competence decided by the dropout model
+  max_mismatches: 3          # search budget: report sites with up to this many mismatches;
+                             # actual bind-vs-dropout is decided by the `dropout` model below
 
-dropout:
-  mode: thermo               # thermo (primary) | rule
-  thermo:
-    tm_drop_max: 5.0         # competent if site annealing Tm >= design_tm - tm_drop_max
-    three_prime_hard_nt: 2   # mismatch within this 3' terminal window = hard dropout
-    mv_conc: 50.0
-    dv_conc: 1.5
-    dntp_conc: 0.6
-    dna_conc: 250.0
-  rule:                      # doc's conservative defaults
-    max_total_mm: 2
-    max_3prime_mm: 0
-    suffix: 5
+dropout:                     # does a primer actually bind at a site?
+  mode: thermo               # thermo (physics-based, primary) | rule (mismatch counts)
+  thermo:                    # nearest-neighbor Tm model (primer3, SantaLucia salt-corrected)
+    # -- decision thresholds --
+    tm_drop_max: 5.0         # dropout if site annealing Tm falls > this far below design Tm, C
+    three_prime_hard_nt: 2   # any mismatch within this 3' terminal window = hard dropout, nt
+    # -- wet-lab reaction conditions (set to match your PCR protocol) --
+    mv_conc: 50.0            # monovalent cation (Na+/K+) conc, mM   -- salt stabilizes duplex
+    dv_conc: 1.5             # divalent cation (Mg2+) conc, mM        -- major Tm driver
+    dntp_conc: 0.6           # dNTP conc, mM         -- chelates Mg2+, lowers effective Mg2+
+    dna_conc: 250.0          # primer (oligo) conc, nM  -- annealing Tm depends on strand conc
+  rule:                      # simple alternative: binds iff <= max_total_mm mismatches AND
+    max_total_mm: 2          #   <= max_3prime_mm within the 3' `suffix` window
+    max_3prime_mm: 0         # max mismatches allowed in the 3' window (0 = none near 3' end)
+    suffix: 5                # size of that 3' window, nt (i.e. the last 5 bases)
 
-rank:
-  min_coverage: 0.95         # doc suggests >= 0.99 for general assays
-  max_off_target: 0
-  max_multi_product: 0
-  min_evaluable: 1
+rank:                        # hard filters a pair must clear to PASS (over evaluable haplotypes)
+  min_coverage: 0.95         # min on-target coverage: fraction of haplotypes that must amplify
+                             # the target (doc suggests >= 0.99 for general assays)
+  max_off_target: 0          # max haplotypes with an off-target product still allowed to pass
+  max_multi_product: 0       # max haplotypes with multiple products (extra bands) allowed
+  min_evaluable: 1           # min non-uncertain haplotypes needed to judge a pair at all
