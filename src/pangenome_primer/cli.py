@@ -145,7 +145,10 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k) -> N
 
     # 3) variability mask -> excluded regions (coords relative to the template)
     excluded = build_excluded_regions(
-        template, hap_seqs, min_allele_freq=raw["mask"]["min_allele_freq"],
+        template, hap_seqs,
+        min_allele_freq=raw["mask"]["min_allele_freq"],
+        merge_gap=raw["mask"].get("merge_gap", 25),
+        max_regions=raw["mask"].get("max_regions", 200),
     )
     click.echo(f"masked {len(excluded)} variable region(s)")
 

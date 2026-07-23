@@ -18,6 +18,8 @@ mask:
   # zone is weighted so Primer3 avoids putting a 3' end over a variable base.
   min_allele_freq: 0.05      # variability at >= this frequency is masked
   three_prime_weight_nt: 5   # extra penalty within this many bp of a candidate 3' end
+  merge_gap: 25              # coalesce variant clusters within this many bp into one zone
+  max_regions: 200           # Primer3 caps SEQUENCE_EXCLUDED_REGION at 200
 
 search:
   backend: bwa               # genome-wide binding search backend (naive for tiny inputs)

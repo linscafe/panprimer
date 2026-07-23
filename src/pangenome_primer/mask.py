@@ -64,15 +64,21 @@ def variability_counts(
     return counts, n_aligned
 
 
-def _merge(positions: list[int]) -> list[tuple[int, int]]:
+def _merge(positions: list[int], gap: int = 0) -> list[tuple[int, int]]:
+    """Coalesce masked positions into (start, length) intervals, joining ones separated by
+    <= `gap` bp (a cluster of nearby variants is one bad zone for a ~20 bp primer)."""
     regions: list[tuple[int, int]] = []
     for p in sorted(positions):
-        if regions and p == regions[-1][0] + regions[-1][1]:
-            s, ln = regions[-1]
-            regions[-1] = (s, ln + 1)
+        if regions and p <= regions[-1][0] + regions[-1][1] + gap:
+            s, end = regions[-1][0], max(regions[-1][0] + regions[-1][1], p + 1)
+            regions[-1] = (s, end - s)
         else:
             regions.append((p, 1))
     return regions
+
+
+# Primer3 caps SEQUENCE_EXCLUDED_REGION at 200 intervals (PR_MAX_INTERVAL_ARRAY).
+PRIMER3_MAX_EXCLUDED = 200
 
 
 def build_excluded_regions(
@@ -81,10 +87,20 @@ def build_excluded_regions(
     *,
     min_allele_freq: float = 0.05,
     min_frac: float = 0.8,
+    merge_gap: int = 25,
+    max_regions: int = PRIMER3_MAX_EXCLUDED,
 ) -> list[tuple[int, int]]:
-    """Masked (start, length) intervals for Primer3 `SEQUENCE_EXCLUDED_REGION`."""
+    """Masked (start, length) intervals for Primer3 `SEQUENCE_EXCLUDED_REGION`.
+
+    Hyper-variable loci (e.g. CYP2D6) can yield hundreds of variant sites, overflowing
+    Primer3's 200-interval cap. We coalesce clusters within `merge_gap` bp, then, if still
+    over `max_regions`, keep the widest zones (steering is a heuristic; the thermodynamic
+    classifier still flags any dropout at an unmasked site downstream)."""
     counts, n = variability_counts(template_seq, haplotype_seqs, min_frac=min_frac)
     if n == 0:
         return []
     masked = [i for i, c in enumerate(counts) if c / n >= min_allele_freq]
-    return _merge(masked)
+    regions = _merge(masked, gap=merge_gap)
+    if len(regions) > max_regions:
+        regions = sorted(sorted(regions, key=lambda r: r[1], reverse=True)[:max_regions])
+    return regions
