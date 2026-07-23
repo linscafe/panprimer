@@ -55,18 +55,37 @@ Split evaluation so the expensive genome-wide search only runs on a shortlist:
 Non-shortlisted candidates are reported with Stage-A metrics (coverage known, specificity "not
 assessed"), so nothing is hidden.
 
-## Items 4 & 5 — RAM fit (MVP)
+## Items 4 & 5 — RAM fit (MVP): avoiding OOM
 
-MVP uses **4 haplotypes** (one per AFR/EUR/EAS/AMR) so peak memory fits comfortably in 15 GB
-(projection is now a PAF lookup; Stage B loads one BWT at a time). This is a capability demo,
-not the full subset. Persistent-worker / heavier parallelism stay a cloud-profile concern.
+MVP uses **3 haplotypes** (AFR/EUR/EAS: HG01884, HG00097, HG00408), all with prebuilt
+caches, so a demo run does **no index building** and touches one genome-scale index at a
+time. This is a capability demo, not the full subset.
+
+**Why OOM happened and the plan to avoid it.** The kills came from *building* the
+whole-genome PAF: a 3 Gb-vs-3 Gb `minimap2` alignment with 16 threads holds both genomes'
+data plus per-thread alignment buffers, exceeding 15 GB. The rules that keep the pipeline
+inside 15 GB:
+
+1. **One genome-scale index in RAM at a time.** Projection processes haplotypes strictly
+   sequentially (load index → project → release → next); Stage B loads one BWT per haplotype
+   in turn. **Peak ≈ a single ~6 GB index — independent of haplotype count**, so adding
+   haplotypes costs time, never peak memory.
+2. **Prefer the light cache.** `.mmi` *loading* (~6 GB, one at a time) instead of the
+   whole-genome PAF *alignment* (both genomes + thread buffers — the thing that OOM'd).
+3. **Cap threads on any alignment.** Memory scales with thread count; the opt-in PAF build
+   uses `-t 4`, and heavy steps should never run at full 16-thread width on this box.
+4. **Two-stage isolates the heavy step.** Stage A works only on the small projected windows
+   (KB in RAM, no genome index); only Stage B loads a genome index, one haplotype at a time,
+   and only for the top-K shortlist.
+5. **Scale horizontally, not by RAM.** More haplotypes → more sequential time locally, or one
+   haplotype per worker on the cloud profile — never a larger local working set.
 
 ## Demo layout
 
 ```
 demo/
-├── samples.tsv        # 4 diverse haplotypes (subset of config/samples.tsv)
-├── run_demo.sh        # builds PAF caches (once) then runs the two-stage pipeline
+├── samples.tsv        # 3 diverse haplotypes (AFR/EUR/EAS; subset of config/samples.tsv)
+├── run_demo.sh        # ensures projection caches, then runs the two-stage pipeline
 └── results/<locus>/   # results.tsv / results.json / report.html
 ```
 

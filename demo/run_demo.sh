@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# MVP demo: two-stage universal-primer design over 4 diverse HPRC R2 haplotypes
-# (one per AFR/EUR/EAS/AMR) — sized to fit in 15 GB RAM. Input and output live under demo/.
+# MVP demo: two-stage universal-primer design over 3 diverse HPRC R2 haplotypes
+# (AFR/EUR/EAS) — sized to fit in 15 GB RAM (one genome index in RAM at a time). Input and
+# output live under demo/.
 #
 # Usage:  bash demo/run_demo.sh [TARGET] [NAME]
 #   TARGET  CHM13 region 'chr:start-end' (default GAPDH, an easy housekeeping locus)
