@@ -1,10 +1,13 @@
 #!/usr/bin/env nextflow
 nextflow.enable.dsl = 2
 
-// Pangenome PCR primer design — one process per pipeline stage (see the plan).
-// Per-haplotype stages (PROJECT, EVALUATE) fan out over the haplotype channel; MASK_DESIGN
-// and AGGREGATE are the fan-in points. Each process shells out to a `pangenome-primer`
-// subcommand with JSON artifacts as the inter-stage contract.
+// Pangenome PCR primer design — two-stage pipeline with cache-aware projection.
+//   ANCHOR -> PROJECT (per hap, cache-aware) -> MASK_DESIGN
+//          -> STAGE_A (coverage shortlist) -> EVALUATE (per hap, genome-wide on shortlist)
+//          -> AGGREGATE
+// Each process shells out to a `pangenome-primer` subcommand. Prebuilt per-haplotype caches
+// (.fai/.mmi/.chm13.paf for projection; bwa .amb/.ann/.bwt/.pac/.sa for the genome-wide
+// search) are staged alongside the FASTA so no index is rebuilt inside a work dir.
 
 process ANCHOR {
     input:
@@ -20,16 +23,16 @@ process ANCHOR {
 }
 
 process PROJECT {
-    tag "${hap_id}"
+    tag "${hid}"
     input:
       path anchor
-      tuple val(hap_id), path(hap_fasta)
+      tuple val(hid), path(fa), path(idx)
     output:
-      tuple val(hap_id), path("proj.${hap_id.replace('#','_')}.json"), path(hap_fasta)
+      tuple val(hid), path("proj.${hid.replace('#','_')}.json")
     script:
     """
-    pangenome-primer project --anchor ${anchor} --hap-fasta ${hap_fasta} \
-        --hap-id '${hap_id}' --out proj.${hap_id.replace('#','_')}.json
+    pangenome-primer project --anchor ${anchor} --hap-fasta ${fa} \
+        --hap-id '${hid}' --out proj.${hid.replace('#','_')}.json
     """
 }
 
@@ -46,19 +49,36 @@ process MASK_DESIGN {
     """
 }
 
-process EVALUATE {
-    tag "${hap_id}"
+process STAGE_A {
     input:
       path candidates
-      tuple val(hap_id), path(proj), path(hap_fasta)
+      path projections
+      val mode
+      val top_k
+    output:
+      path 'shortlist.json'
+    script:
+    def proj_args = projections.collect { "--projection ${it}" }.join(' ')
+    def mode_arg = mode ? "--mode ${mode}" : ''
+    """
+    pangenome-primer stage-a --candidates ${candidates} ${proj_args} \
+        ${mode_arg} --top-k ${top_k} --out shortlist.json
+    """
+}
+
+process EVALUATE {
+    tag "${hid}"
+    input:
+      path shortlist
+      tuple val(hid), path(proj), path(fa), path(idx)
       val mode
     output:
-      path "result.${hap_id.replace('#','_')}.json"
+      path "result.${hid.replace('#','_')}.json"
     script:
     def mode_arg = mode ? "--mode ${mode}" : ''
     """
-    pangenome-primer evaluate --candidates ${candidates} --projection ${proj} \
-        --hap-fasta ${hap_fasta} ${mode_arg} --out result.${hap_id.replace('#','_')}.json
+    pangenome-primer evaluate --candidates ${shortlist} --projection ${proj} \
+        --hap-fasta ${fa} ${mode_arg} --out result.${hid.replace('#','_')}.json
     """
 }
 
@@ -66,14 +86,14 @@ process AGGREGATE {
     publishDir "${params.outdir}", mode: 'copy'
     input:
       path anchor
-      path candidates
+      path shortlist
       path results
     output:
       path 'report/*'
     script:
     def res_args = results.collect { "--result ${it}" }.join(' ')
     """
-    pangenome-primer aggregate --anchor ${anchor} --candidates ${candidates} \
+    pangenome-primer aggregate --anchor ${anchor} --candidates ${shortlist} \
         ${res_args} --outdir report
     """
 }
@@ -84,17 +104,26 @@ workflow {
 
     cfg   = file(params.config)
     chm13 = file(params.chm13)
+    mode  = params.mode ?: ''
+    top_k = params.top_k ?: 5
 
-    // haplotype channel: (hap_id, fasta) from samples.tsv (url column = local path)
+    // haplotype channel: (hap_id, fasta, [prebuilt caches]) from samples.tsv
     haplos = Channel.fromPath(params.samples)
         .splitCsv(sep: '\t', header: false)
         .filter { it && !it[0].startsWith('#') && it[0] != 'sample' }
-        .map { row -> tuple("${row[0]}#hap${row[1]}", file(row[3])) }
+        .map { row ->
+            def fa = file(row[3])
+            def idx = ['fai','mmi','chm13.paf','amb','ann','bwt','pac','sa']
+                        .collectMany { files("${fa}.${it}") }
+            tuple("${row[0]}#hap${row[1]}", fa, idx)
+        }
 
-    anchor      = ANCHOR(params.target, chm13, cfg)
-    projections = PROJECT(anchor, haplos)                 // (hap_id, proj.json, hap_fasta)
-    proj_jsons  = projections.map { it[1] }.collect()
-    candidates  = MASK_DESIGN(anchor, proj_jsons)
-    results     = EVALUATE(candidates, projections, params.mode ?: '')
-    AGGREGATE(anchor, candidates, results.collect())
+    anchor    = ANCHOR(params.target, chm13, cfg)
+    projected = PROJECT(anchor, haplos)                     // (hid, proj.json)
+    projjson  = projected.map { it[1] }.collect()
+    candidates = MASK_DESIGN(anchor, projjson)
+    shortlist = STAGE_A(candidates, projjson, mode, top_k)  // top-K by coverage
+    evalIn    = projected.join(haplos)                      // (hid, proj.json, fa, idx)
+    results   = EVALUATE(shortlist, evalIn, mode)           // genome-wide on shortlist only
+    AGGREGATE(anchor, shortlist, results.collect())
 }

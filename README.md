@@ -93,12 +93,16 @@ provenance (URL + sha256 + release) before a real run. Tune thresholds in
 - **Runtime**: two-stage search (`--top-k`: cheap coverage → genome-wide specificity on the
   shortlist) + `.mmi`-cached projection. 3-haplotype demo ≈ 9 min, ~11.8 GB peak
   (`demo/run_demo.sh`). See `docs/runtime_plan.md`.
-- **Nextflow pipeline**: validated end-to-end on a synthetic mini-pangenome.
+- **Nextflow pipeline**: **two-stage + cache-aware projection** (STAGE_A coverage shortlist →
+  genome-wide EVALUATE on the top-K), with prebuilt per-haplotype caches staged so no index is
+  rebuilt in a work dir. Validated end-to-end on a synthetic mini-pangenome (`--top_k`).
+- **PAF projection at scale**: opt-in `BUILD_PAF=1` in `scripts/prepare_haplotypes.sh`
+  (threads via `MM_THREADS`) builds the whole-genome projection cache; the Nextflow/`run`
+  projection uses it automatically when present. Too heavy for 15 GB locally — a cloud lever.
 
 **Not yet done**
-- Nextflow pipeline updated to the two-stage / cached-projection path (the single-process
-  `run` command is the validated real-data path today).
-- Whole-genome PAF projection at scale (opt-in `BUILD_PAF=1`; too heavy for 15 GB — cloud).
 - GRCh38-coord input (FASTA-anchor path exists; explicit GRCh38 lift not wired).
+
+**Cloud run (not yet done)**
 - Full ~460-haplotype / cloud run; the graph annotation layer; automated primer rescue.
   See the plan's "out of scope (v2+)".

@@ -290,18 +290,62 @@ def anchor_cmd(target, chm13_fasta, config_path, out) -> None:
 @click.option("--hap-id", required=True)
 @click.option("--out", required=True)
 def project_cmd(anchor_json, hap_fasta, hap_id, out) -> None:
-    """Stage 2: project the target onto one haplotype."""
-    from .project import project_locus
+    """Stage 2: project the target onto one haplotype (cache-aware: PAF lift or .mmi)."""
+    from .project import project_target
     from .serialize import locus_to_dict
 
-    anchor = json.loads(Path(anchor_json).read_text())
-    proj = project_locus(anchor["template"], hap_fasta)
+    a = json.loads(Path(anchor_json).read_text())
+    proj = project_target(a["chrom"], a["tstart"], a["tend"], a["template"], hap_fasta)
     Path(out).write_text(json.dumps({
         "hap_id": hap_id, "fasta": hap_fasta,
         "locus": locus_to_dict(proj.locus),
         "hap_seq": proj.haplotype_seq, "reason": proj.reason,
     }))
-    click.echo(f"{hap_id}: {'ok' if proj.locus else 'uncertain'}")
+    click.echo(f"{hap_id}: {proj.reason if proj.locus else 'uncertain'}")
+
+
+@cli.command(name="stage-a")
+@click.option("--candidates", "candidates_json", required=True)
+@click.option("--projection", "proj_files", multiple=True, required=True)
+@click.option("--config", "config_path", default=None)
+@click.option("--mode", type=click.Choice(["thermo", "rule"]), default=None)
+@click.option("--top-k", default=5, help="keep this many candidates by on-target coverage; 0 = all")
+@click.option("--out", required=True)
+def stage_a_cmd(candidates_json, proj_files, config_path, mode, top_k, out) -> None:
+    """Stage A: rank candidates by on-target coverage against each projected window (no
+    genome-wide index), and write a shortlist for the expensive stage-B specificity search."""
+    from .engine import HaplotypeContext, evaluate_pair
+    from .model import Locus
+    from .serialize import candidate_from_dict, candidate_to_dict, locus_from_dict
+
+    raw = cfgmod.load_raw(config_path)
+    mode = mode or raw["dropout"]["mode"]
+    dcfg = cfgmod.design_config(raw)
+    cands = [candidate_from_dict(d) for d in json.loads(Path(candidates_json).read_text())["candidates"]]
+    projs = [json.loads(Path(f).read_text()) for f in proj_files]
+    windows = []
+    for p in projs:
+        loc = locus_from_dict(p["locus"])
+        windows.append(HaplotypeContext(
+            p["hap_id"], loc.chrom if loc else "?", p.get("hap_seq", ""),
+            Locus(p["hap_id"], loc.chrom, 0, len(p["hap_seq"])) if loc else None,
+            projection_ok=loc is not None))
+
+    def ecfg(c):
+        design_tm = _pair_tm(c.pair.forward.sequence, c.pair.reverse.sequence, dcfg.tm_opt)
+        return EvalConfig(mode=mode, min_product=dcfg.product_size_min,
+                          max_product=dcfg.product_size_max, rule_cfg=cfgmod.rule_config(raw),
+                          thermo_cfg=cfgmod.thermo_config(raw, design_tm))
+
+    cov = {c.pair.name: evaluate_pair(c.pair, windows, ecfg(c)).on_target_coverage for c in cands}
+    order = sorted(cands, key=lambda c: (-cov[c.pair.name], c.penalty))
+    k = len(cands) if not top_k else min(top_k, len(cands))
+    shortlist = order[:k]
+    Path(out).write_text(json.dumps({
+        "candidates": [candidate_to_dict(c) for c in shortlist],
+        "stage_a_coverage": {c.pair.name: round(cov[c.pair.name], 4) for c in cands},
+    }))
+    click.echo(f"stage A: {len(cands)} candidates -> shortlist {k} by coverage")
 
 
 @cli.command(name="design")
@@ -413,6 +457,7 @@ def aggregate_cmd(anchor_json, candidates_json, result_files, config_path, outdi
         "target": f"{anchor['chrom']}:{anchor['start']}-{anchor['end']}",
         "dropout_mode": raw["dropout"]["mode"],
         "n_haplotypes": len(per_hap_files),
+        "specificity_checked": len(cands),
     }
     paths = report.write_all(ranked, outdir, provenance)
     n_pass = sum(1 for rp in ranked if rp.passed)
