@@ -1,7 +1,5 @@
 # An introduction to the primer **verification** pipeline
 
-*For colleagues with a genetics/molecular-biology background who are new to pangenomes.*
-
 > New to pangenomes? Read §2 below for the one-minute version, or
 > [`intro_design_pipeline.md`](intro_design_pipeline.md) for the fuller explanation. The two
 > pipelines share the same engine but answer opposite questions.

@@ -1,7 +1,5 @@
 # An introduction to the primer **design** pipeline
 
-*For colleagues with a genetics/molecular-biology background who are new to pangenomes.*
-
 ---
 
 ## 1. What problem does this solve?

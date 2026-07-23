@@ -10,7 +10,7 @@ a single reference collapses) are caught before you order oligos.
 (they explain what a pangenome is and why the pipelines work the way they do).
 
 See also [`CONTEXT.md`](CONTEXT.md) for the ubiquitous language and the design docs in
-[`docs/`](docs/) — [runtime_plan](docs/runtime_plan.md), [verify_plan](docs/verify_plan.md),
+[`docs/`](docs/) — [execution plan (design)](docs/execution_plan_design_pipeline.md), [execution plan (verify)](docs/execution_plan_verify_pipeline.md),
 [config_reference](docs/config_reference.md).
 
 ## How it works
@@ -116,7 +116,7 @@ pangenome-primer verify --primers primers.csv --chm13 CHM13v2.0.fa --grch38 GRCh
 Produces `verify_matrix.html` (+ `verify.json`/`.tsv`): a matrix, one row per pair, one column
 per haplotype. Cells show predicted product sizes — **green** correct (on-target), **red**
 off-target, grey **dropout** (a binding-site variant kills the product), `?` not projectable.
-See `docs/verify_plan.md`.
+See `docs/execution_plan_verify_pipeline.md`.
 
 ## Status
 
@@ -132,7 +132,7 @@ See `docs/verify_plan.md`.
   dropout (CHM13-designed primers that fail on real haplotypes). Reports in `demo/results/`.
 - **Runtime**: two-stage search (`--top-k`: cheap coverage → genome-wide specificity on the
   shortlist) + `.mmi`-cached projection. 3-haplotype demo ≈ 9 min, ~11.8 GB peak
-  (`demo/run_demo.sh`). See `docs/runtime_plan.md`.
+  (`demo/run_demo.sh`). See `docs/execution_plan_design_pipeline.md`.
 - **Nextflow pipeline**: **two-stage + cache-aware projection** (STAGE_A coverage shortlist →
   genome-wide EVALUATE on the top-K), with prebuilt per-haplotype caches staged so no index is
   rebuilt in a work dir. Validated end-to-end on a synthetic mini-pangenome (`--top_k`).
@@ -140,7 +140,7 @@ See `docs/verify_plan.md`.
   (threads via `MM_THREADS`) builds the whole-genome projection cache; the Nextflow/`run`
   projection uses it automatically when present. Too heavy for 15 GB locally — a cloud lever.
 - **Verify mode** (`pangenome-primer verify`): screen user-supplied primer pairs from a CSV;
-  amplicon-size matrix (green on-target / red off-target / grey dropout). See `docs/verify_plan.md`.
+  amplicon-size matrix (green on-target / red off-target / grey dropout). See `docs/execution_plan_verify_pipeline.md`.
 
 **Not yet done**
 - Full ~460-haplotype / cloud run; the graph annotation layer; automated primer rescue.
