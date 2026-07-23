@@ -20,3 +20,5 @@ selftest_out/
 *.paf
 # Large reference/haplotype data lives outside the repo
 hprc-r2/
+# Demo (kept local only — samples, run script, and example results)
+demo/
