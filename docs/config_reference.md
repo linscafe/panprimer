@@ -27,7 +27,7 @@ Two thresholds are easy to confuse:
 | key | meaning | unit |
 |---|---|---|
 | `min_allele_freq` | A template position is masked (excluded from primer placement) when its variant frequency across the haplotype subset reaches this. `0.05` = mask sites varying in ≥5%. | fraction |
-| `three_prime_weight_nt` | Width of the extra-penalty zone applied near a candidate primer's 3′ end (3′-proximal variants matter most). | nt |
+| `three_prime_weight_nt` | *(Reserved — not yet wired.)* Intended width of an extra-penalty zone near a candidate primer's 3′ end. v1 masking uses hard `SEQUENCE_EXCLUDED_REGION`s, not a graded 3′ penalty. | nt |
 | `merge_gap` | Variant clusters within this many bp are coalesced into one masked zone (a cluster is one bad zone for a ~20 nt primer). | bp |
 | `max_regions` | Cap on masked intervals — Primer3 allows at most 200 `SEQUENCE_EXCLUDED_REGION`s. Over the cap, the widest zones are kept. | count |
 
@@ -35,7 +35,7 @@ Two thresholds are easy to confuse:
 
 | key | meaning |
 |---|---|
-| `backend` | Search engine for primer binding sites: `bwa` (genome-wide on real assemblies) or `naive` (pure-Python, for tiny inputs/tests). |
+| `backend` | *(Reserved — not yet wired.)* Intended to select the binding-site search engine. Today the engine picks automatically: `bwa` genome-wide on real assemblies, `naive` (pure-Python) for the in-memory/tiny-input path. |
 | `max_mismatches` | Search budget — bwa reports candidate sites with up to this many mismatches. This only widens the *net*; whether a site actually amplifies is decided by the `dropout` model, not by this number. |
 
 ---

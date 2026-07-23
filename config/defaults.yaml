@@ -17,12 +17,12 @@ mask:
   # positions polymorphic across the subset are excluded/penalized; the 3'-sensitive
   # zone is weighted so Primer3 avoids putting a 3' end over a variable base.
   min_allele_freq: 0.05      # mask template positions varying in >= this fraction of haplotypes
-  three_prime_weight_nt: 5   # extra-penalty zone width near a candidate 3' end, nt
+  three_prime_weight_nt: 5   # RESERVED (not yet wired): intended 3'-proximal extra-penalty width, nt
   merge_gap: 25              # coalesce variant clusters within this many bp into one zone
   max_regions: 200           # cap on masked intervals (Primer3 SEQUENCE_EXCLUDED_REGION max)
 
 search:
-  backend: bwa               # genome-wide binding search backend (naive for tiny inputs)
+  backend: bwa               # RESERVED (not yet wired): engine auto-selects bwa (real) / naive (tiny)
   max_mismatches: 3          # search budget: report sites with up to this many mismatches;
                              # actual bind-vs-dropout is decided by the `dropout` model below
 

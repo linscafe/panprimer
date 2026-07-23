@@ -15,8 +15,9 @@ no implementation details, no decisions (those live in the plan / ADRs).
   individuals.
 
 - **Expected homologous locus** — the region in a given haplotype that the target locus
-  projects onto (via local alignment of the CHM13 target ± flank). An amplicon is
-  **on-target** only if it falls within this window; anything else is **off-target**.
+  projects onto (by lifting the CHM13 target ± flank through a cached alignment, or aligning
+  it on the fly). An amplicon is **on-target** only if it falls within this window; anything
+  else is **off-target**.
 
 - **Binding site** — a location in a haplotype where a primer anneals, with its strand,
   coordinates, per-position mismatches, and the mismatch offset from the primer's 3′ end.

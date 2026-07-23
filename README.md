@@ -5,8 +5,9 @@ reference. Primers are evaluated across many phased human haplotypes, so allele 
 (a binding-site SNP/indel under a primer 3′ end) and **off-target** amplification (paralogs
 a single reference collapses) are caught before you order oligos.
 
-See [`CONTEXT.md`](CONTEXT.md) for the ubiquitous language and
-[the plan](../.claude/plans) for the architecture and the decisions behind it.
+See [`CONTEXT.md`](CONTEXT.md) for the ubiquitous language and the design docs in
+[`docs/`](docs/) — [runtime_plan](docs/runtime_plan.md), [verify_plan](docs/verify_plan.md),
+[config_reference](docs/config_reference.md) — for architecture and decisions.
 
 ## How it works
 
@@ -116,7 +117,9 @@ See `docs/verify_plan.md`.
 ## Status
 
 **Done**
-- **Engine + reporting**: implemented and tested (18 unit/integration tests; `selftest`).
+- **Engine + reporting**: implemented and tested (27 unit/integration tests; `selftest`).
+- **Input**: CHM13 region, **GRCh38 region** (`--target-assembly grch38 --grch38 <fa>`;
+  extracted + aligned to CHM13), or FASTA of the locus. Ambiguous mappings fail loud.
 - **Real HPRC R2 data**: `fetch-subset` downloader (official index, md5-pinned); 10-haplotype
   subset downloaded + `bwa`-indexed; CHM13 v2.0 reference in place.
 - **Real-locus validation**: **GAPDH** (easy) → clean universal primer at 100% coverage;
@@ -132,14 +135,9 @@ See `docs/verify_plan.md`.
 - **PAF projection at scale**: opt-in `BUILD_PAF=1` in `scripts/prepare_haplotypes.sh`
   (threads via `MM_THREADS`) builds the whole-genome projection cache; the Nextflow/`run`
   projection uses it automatically when present. Too heavy for 15 GB locally — a cloud lever.
-
-- **Input**: CHM13 region, **GRCh38 region** (`--target-assembly grch38 --grch38 <fa>`;
-  extracted + aligned to CHM13), or FASTA of the locus. Ambiguous mappings fail loud.
 - **Verify mode** (`pangenome-primer verify`): screen user-supplied primer pairs from a CSV;
   amplicon-size matrix (green on-target / red off-target / grey dropout). See `docs/verify_plan.md`.
 
 **Not yet done**
-
-**Cloud run (not yet done)**
 - Full ~460-haplotype / cloud run; the graph annotation layer; automated primer rescue.
   See the plan's "out of scope (v2+)".

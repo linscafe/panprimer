@@ -22,7 +22,7 @@ query time. No per-query minimap2, no multi-GB index load.
 
 - `align_cache.py`:
   - `build_alignment(chm13, hap_fasta, out_paf)` → `minimap2 -cx asm5 chm13 hap` (target=CHM13).
-  - `project_from_paf(paf, chrom, start, end, hap_fasta, flank)` → `Projection` (homologous
+  - `project_from_paf(paf, chrom, start, end, hap_fasta)` → `Projection` (homologous
     window + haplotype sequence for the mask), handling strand.
 - `project.project_target` prefers the PAF cache (`<hap>.chm13.paf`) and falls back to the
   `.mmi`-cached on-the-fly path when no PAF exists.
@@ -56,6 +56,10 @@ Non-shortlisted candidates are reported with Stage-A metrics (coverage known, sp
 assessed"), so nothing is hidden.
 
 ## Items 4 & 5 — RAM fit (MVP): avoiding OOM
+
+*(Item 3 — the `.mmi` projection cache — is folded into Item 1's resolution above. Items 4 & 5
+from the original review, persistent worker / parallelism, are RAM-bound and reframed here as
+the fit-in-15 GB strategy.)*
 
 MVP uses **3 haplotypes** (AFR/EUR/EAS: HG01884, HG00097, HG00408), all with prebuilt
 caches, so a demo run does **no index building** and touches one genome-scale index at a
@@ -95,4 +99,3 @@ demo/
   produces the same top pair as the full search on the synthetic fixture.
 - End-to-end: `demo/run_demo.sh` on GAPDH (`chr12:6544868-6548730`) — expect the same best
   universal primer as the 10-haplotype run, in a fraction of the time; then CYP2D6 hard case.
-```
