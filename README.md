@@ -5,9 +5,13 @@ reference. Primers are evaluated across many phased human haplotypes, so allele 
 (a binding-site SNP/indel under a primer 3′ end) and **off-target** amplification (paralogs
 a single reference collapses) are caught before you order oligos.
 
-See [`CONTEXT.md`](CONTEXT.md) for the ubiquitous language and the design docs in
+**New here?** Start with the plain-language introductions:
+[design pipeline](docs/intro_design_pipeline.md) · [verify pipeline](docs/intro_verify_pipeline.md)
+(they explain what a pangenome is and why the pipelines work the way they do).
+
+See also [`CONTEXT.md`](CONTEXT.md) for the ubiquitous language and the design docs in
 [`docs/`](docs/) — [runtime_plan](docs/runtime_plan.md), [verify_plan](docs/verify_plan.md),
-[config_reference](docs/config_reference.md) — for architecture and decisions.
+[config_reference](docs/config_reference.md).
 
 ## How it works
 
