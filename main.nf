@@ -88,7 +88,7 @@ workflow {
     // haplotype channel: (hap_id, fasta) from samples.tsv (url column = local path)
     haplos = Channel.fromPath(params.samples)
         .splitCsv(sep: '\t', header: false)
-        .filter { it && !it[0].startsWith('#') }
+        .filter { it && !it[0].startsWith('#') && it[0] != 'sample' }
         .map { row -> tuple("${row[0]}#hap${row[1]}", file(row[3])) }
 
     anchor      = ANCHOR(params.target, chm13, cfg)

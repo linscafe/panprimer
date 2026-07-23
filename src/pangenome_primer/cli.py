@@ -57,8 +57,8 @@ def _load_haplotypes(samples_tsv: str) -> list[tuple[str, str]]:
     rows: list[tuple[str, str]] = []
     for line in Path(samples_tsv).read_text().splitlines():
         line = line.strip()
-        if not line or line.startswith("#"):
-            continue
+        if not line or line.startswith("#") or line.startswith("sample\t"):
+            continue  # skip comments and the header row
         f = line.split("\t")
         sample, hap, _superpop, url = f[0], f[1], f[2], f[3]
         # url is a local path once fetched (prepare-haplotypes stage); accept local paths.
