@@ -19,8 +19,9 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-# the small default subset: one hap1 assembly from each of these (matches the demo)
-DEFAULT_SUPERPOPS = ("AFR", "EUR", "EAS")
+# the default subset: hap1 of these three samples (AFR/EUR/EAS) — identical to the demo
+# (demo-design-pipeline/samples.tsv)
+DEMO_SAMPLES = ("HG01884", "HG00097", "HG00408")
 
 # rough per-haplotype footprints (see the README data-setup warning) used for the resource
 # check before a real download
@@ -137,9 +138,9 @@ def select_diverse(
 
 
 def select_default(records: list[HaplotypeRecord]) -> list[HaplotypeRecord]:
-    """The small default subset: one hap1 assembly from each of AFR/EUR/EAS (3 haplotypes,
-    the same diverse set the demo uses)."""
-    return select_diverse(records, per_superpop=1, superpops=DEFAULT_SUPERPOPS, haps=(1,))
+    """The default subset: hap1 of the three demo samples — HG01884 (AFR), HG00097 (EUR),
+    HG00408 (EAS). Identical to demo-design-pipeline/samples.tsv."""
+    return [r for r in select_samples(records, list(DEMO_SAMPLES)) if r.hap == 1]
 
 
 def select_all(records: list[HaplotypeRecord]) -> list[HaplotypeRecord]:

@@ -43,7 +43,7 @@ pytest -q                                          # engine correctness anchor
 
 ## 📥 Get the data
 
-Select an HPRC R2 haplotype subset and pin provenance from the official index — manifest first, then the multi-GB pull. The default is a small, diverse **3-haplotype** set (AFR/EUR/EAS, hap1 — the same subset the demo uses):
+Select an HPRC R2 haplotype subset and pin provenance from the official index — manifest first, then the multi-GB pull. The default is the demo's **3-haplotype** set — hap1 of HG01884 (AFR), HG00097 (EUR), and HG00408 (EAS):
 
 ```bash
 pangenome-primer fetch-subset                              # default: 3 haplotypes, manifest only

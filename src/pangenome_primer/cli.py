@@ -543,7 +543,7 @@ def rerender_cmd(results_json, outdir, config_path, quarto) -> None:
               help="select ALL ~460 R2 haplotypes (huge — see the resource check before --download)")
 @click.option("--per-superpop", type=int, default=None,
               help="advanced: N samples from each of AFR/EUR/EAS/SAS/AMR, both haplotypes "
-                   "(default: 3 hap1 assemblies from AFR/EUR/EAS — the demo subset)")
+                   "(default: the 3 demo haplotypes HG01884/HG00097/HG00408, hap1)")
 @click.option("--data-dir", default="hprc-r2/assemblies", show_default=True,
               help="where assembly FASTAs are/should be stored")
 @click.option("--out", "out_path", default="config/samples.tsv", show_default=True)
@@ -556,7 +556,7 @@ def fetch_subset_cmd(sample_ids, fetch_all, per_superpop, data_dir, out_path,
                      download, limit, yes) -> None:
     """Select an HPRC R2 haplotype subset and write config/samples.tsv.
 
-    Default is a small, diverse 3-haplotype set (AFR/EUR/EAS, hap1 — the demo subset),
+    Default is the 3 demo haplotypes (HG01884/HG00097/HG00408, hap1; AFR/EUR/EAS),
     manifest-only: fetch the official index + sample metadata, pin provenance (md5 + S3 URL +
     accession), and write the manifest. Pass --download to pull the assemblies (≈1 GB each)
     into --data-dir and verify md5s; --download first prints a disk/RAM resource check and, for

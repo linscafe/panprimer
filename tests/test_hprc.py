@@ -63,13 +63,16 @@ def test_select_samples_explicit(monkeypatch):
     assert chosen[0].sample_id == "S_UNK"
 
 
-def test_select_default_is_hap1_diverse(monkeypatch):
-    _patch(monkeypatch)
-    recs = hprc.load_records("index", "meta")
+def test_select_default_is_the_three_demo_hap1():
+    # default is exactly hap1 of the three demo samples (a decoy sample is ignored)
+    recs = [
+        hprc.HaplotypeRecord(sid, hap, "NA", "NA", f"u/{sid}_{hap}.fa.gz", "m", "f", "g")
+        for sid in ("HG01884", "HG00097", "HG00408", "HG99999")
+        for hap in (1, 2)
+    ]
     chosen = hprc.select_default(recs)
-    # fixture has AFR + EUR (no EAS); default is one hap1 assembly per superpop
-    assert [r.hap_id for r in chosen] == ["S_AFR#hap1", "S_EUR#hap1"]
-    assert all(r.hap == 1 for r in chosen)
+    assert [(r.sample_id, r.hap) for r in chosen] == [
+        ("HG00097", 1), ("HG00408", 1), ("HG01884", 1)]  # sorted; hap1 only; decoy excluded
 
 
 def test_select_all_returns_everything(monkeypatch):
