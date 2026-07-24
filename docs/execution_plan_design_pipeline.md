@@ -87,15 +87,15 @@ inside 15 GB:
 ## Demo layout
 
 ```
-demo/
+demo-design-pipeline/
 ├── samples.tsv        # 3 diverse haplotypes (AFR/EUR/EAS; subset of config/samples.tsv)
 ├── run_demo.sh        # ensures projection caches, then runs the two-stage pipeline
-└── results/<locus>/   # results.tsv / results.json / report.html
+└── <locus>/           # results.tsv / results.json / report.html
 ```
 
 ## Verification
 
 - Unit: PAF lift maps a known CHM13 interval to the expected haplotype window; two-stage
   produces the same top pair as the full search on the synthetic fixture.
-- End-to-end: `demo/run_demo.sh` on GAPDH (`chr12:6544868-6548730`) — expect the same best
+- End-to-end: `demo-design-pipeline/run_demo.sh` on GAPDH (`chr12:6544868-6548730`) — expect the same best
   universal primer as the 10-haplotype run, in a fraction of the time; then CYP2D6 hard case.

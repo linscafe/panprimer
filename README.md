@@ -132,7 +132,7 @@ See `docs/execution_plan_verify_pipeline.md`.
   dropout (CHM13-designed primers that fail on real haplotypes). Reports in `demo-design-pipeline/`.
 - **Runtime**: two-stage search (`--top-k`: cheap coverage → genome-wide specificity on the
   shortlist) + `.mmi`-cached projection. 3-haplotype demo ≈ 9 min, ~11.8 GB peak
-  (`demo/run_demo.sh`). See `docs/execution_plan_design_pipeline.md`.
+  (`demo-design-pipeline/run_demo.sh`). See `docs/execution_plan_design_pipeline.md`.
 - **Nextflow pipeline**: **two-stage + cache-aware projection** (STAGE_A coverage shortlist →
   genome-wide EVALUATE on the top-K), with prebuilt per-haplotype caches staged so no index is
   rebuilt in a work dir. Validated end-to-end on a synthetic mini-pangenome (`--top_k`).
