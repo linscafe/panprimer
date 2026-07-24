@@ -53,7 +53,9 @@ def _aligner(fasta: str, preset: str):
     from pathlib import Path
 
     mmi = fasta + ".mmi"
-    if Path(mmi).exists():
+    # require a non-empty index: a 0-byte/truncated .mmi (an interrupted `minimap2 -d`)
+    # loads as an aligner that maps nothing, silently turning every projection uncertain.
+    if Path(mmi).is_file() and Path(mmi).stat().st_size > 0:
         return mappy.Aligner(fn_idx_in=mmi, preset=preset)
     return mappy.Aligner(fasta, preset=preset)
 

@@ -65,7 +65,11 @@ grep -vE '^#|^sample\b' "$TSV" | while IFS=$'\t' read -r sample hap superpop loc
     else log "$id PAF FAILED"; rm -f "$fa.chm13.paf.part"; fi
   elif [ ! -s "$fa.mmi" ]; then
     t0=$(date +%s); log "$id minimap2 -d (projection index) ..."
-    minimap2 -x asm5 -d "$fa.mmi" "$fa" 2>>"$LOG" && log "$id mmi done ($(( ($(date +%s)-t0)/60 )) min)" || log "$id MMI FAILED"
+    # write to .part then rename so an interrupted build never leaves a truncated .mmi that
+    # loads as an empty aligner (would turn every projection uncertain)
+    if minimap2 -x asm5 -d "$fa.mmi.part" "$fa" 2>>"$LOG"; then
+      mv "$fa.mmi.part" "$fa.mmi"; log "$id mmi done ($(( ($(date +%s)-t0)/60 )) min)"
+    else log "$id MMI FAILED"; rm -f "$fa.mmi.part"; fi
   fi
   log "$id READY"
 done

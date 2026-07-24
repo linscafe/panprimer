@@ -52,3 +52,17 @@ def test_grch38_coords_anchor_to_chm13(tmp_path):
         "g1:0-600", chm13, assembly="grch38", grch38_fasta=grch38)
     assert chrom == "c1"
     assert abs(start - 1000) <= 5 and abs(end - 1600) <= 5
+
+
+def test_empty_mmi_is_ignored(tmp_path):
+    """A 0-byte/truncated .mmi (interrupted `minimap2 -d`) must be skipped, not loaded as an
+    empty aligner that maps nothing (would silently turn every projection uncertain)."""
+    pytest.importorskip("mappy")
+    pytest.importorskip("pysam")
+    random.seed(11)
+    seq = "".join(random.choice("ACGT") for _ in range(3000))
+    fa = _write_fa(tmp_path / "hap.fa", "h1", seq)
+    (tmp_path / "hap.fa.mmi").write_bytes(b"")  # corrupt/empty index next to the FASTA
+    aln = project._aligner(fa, preset="asm5")  # must fall back to building from the FASTA
+    hits = aln.map(seq[1000:1200])
+    assert any(True for _ in hits), "aligner built from FASTA should map the query"
