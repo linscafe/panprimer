@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1010" height="252" viewBox="0 0 1010 252" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+<rect width="1010" height="252" fill="#ffffff"/>
+<text x="20.0" y="34.0" font-size="19" font-weight="700" fill="#1f2328">Primer verification across the pangenome</text>
+<text x="20.0" y="60.0" font-size="12.5" fill="#1a7f37" font-weight="600">correct size</text>
+<text x="125.0" y="60.0" font-size="12.5" fill="#cf222e" font-weight="600">off-target</text>
+<text x="216.0" y="60.0" font-size="12.5" fill="#6e7781" font-weight="600">dropout</text>
+<text x="286.0" y="60.0" font-size="12.5" fill="#6e7781" font-weight="600">? not projectable</text>
+<rect x="20.0" y="78.0" width="970.2" height="34.0" fill="#f6f8fa"/>
+<text x="32.0" y="100.0" font-size="13" font-weight="700"><tspan xml:space="preserve" fill="#1f2328">primer_id</tspan></text>
+<text x="165.2" y="100.0" font-size="13" font-weight="700"><tspan xml:space="preserve" fill="#1f2328">expected bp</tspan></text>
+<text x="275.0" y="100.0" font-size="13" font-weight="700"><tspan xml:space="preserve" fill="#1f2328">HG01884#hap1</tspan></text>
+<text x="517.4" y="100.0" font-size="13" font-weight="700"><tspan xml:space="preserve" fill="#1f2328">HG00097#hap1</tspan></text>
+<text x="759.8" y="100.0" font-size="13" font-weight="700"><tspan xml:space="preserve" fill="#1f2328">HG00408#hap1</tspan></text>
+<text x="32.0" y="132.0" font-size="13" font-weight="700"><tspan xml:space="preserve" fill="#1f2328">GAPDH_clean</tspan></text>
+<text x="165.2" y="132.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1f2328">201</tspan></text>
+<text x="275.0" y="132.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1a7f37">201</tspan></text>
+<text x="517.4" y="132.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1a7f37">201</tspan></text>
+<text x="759.8" y="132.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1a7f37">201</tspan></text>
+<text x="32.0" y="162.0" font-size="13" font-weight="700"><tspan xml:space="preserve" fill="#1f2328">CYP2D6_clean</tspan></text>
+<text x="165.2" y="162.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1f2328">280</tspan></text>
+<text x="275.0" y="162.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1a7f37">280</tspan></text>
+<text x="517.4" y="162.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1a7f37">280</tspan></text>
+<text x="759.8" y="162.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1a7f37">280</tspan></text>
+<text x="32.0" y="192.0" font-size="13" font-weight="700"><tspan xml:space="preserve" fill="#1f2328">CYP2D6_paralog</tspan></text>
+<text x="165.2" y="192.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1f2328">282</tspan></text>
+<text x="275.0" y="192.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1a7f37">282</tspan><tspan xml:space="preserve" fill="#1f2328">  </tspan><tspan xml:space="preserve" fill="#cf222e">off:279,282,282,285,596</tspan></text>
+<text x="517.4" y="192.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1a7f37">282</tspan><tspan xml:space="preserve" fill="#1f2328">  </tspan><tspan xml:space="preserve" fill="#cf222e">off:279,282,282,285,597</tspan></text>
+<text x="759.8" y="192.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1a7f37">282</tspan><tspan xml:space="preserve" fill="#1f2328">  </tspan><tspan xml:space="preserve" fill="#cf222e">off:279,282,282,285,597</tspan></text>
+<text x="32.0" y="222.0" font-size="13" font-weight="700"><tspan xml:space="preserve" fill="#1f2328">CYP2D6_dropout</tspan></text>
+<text x="165.2" y="222.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1f2328">122</tspan></text>
+<text x="275.0" y="222.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#6e7781" font-style="italic">dropout</tspan></text>
+<text x="517.4" y="222.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#6e7781" font-style="italic">dropout</tspan></text>
+<text x="759.8" y="222.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#6e7781" font-style="italic">dropout</tspan></text>
+<line x1="20.0" y1="78.0" x2="20.0" y2="232.0" stroke="#d0d7de"/>
+<line x1="153.2" y1="78.0" x2="153.2" y2="232.0" stroke="#d0d7de"/>
+<line x1="263.0" y1="78.0" x2="263.0" y2="232.0" stroke="#d0d7de"/>
+<line x1="505.4" y1="78.0" x2="505.4" y2="232.0" stroke="#d0d7de"/>
+<line x1="747.8" y1="78.0" x2="747.8" y2="232.0" stroke="#d0d7de"/>
+<line x1="990.2" y1="78.0" x2="990.2" y2="232.0" stroke="#d0d7de"/>
+<line x1="20.0" y1="78.0" x2="990.2" y2="78.0" stroke="#d0d7de"/>
+<line x1="20.0" y1="112.0" x2="990.2" y2="112.0" stroke="#d0d7de"/>
+<line x1="20.0" y1="142.0" x2="990.2" y2="142.0" stroke="#d0d7de"/>
+<line x1="20.0" y1="172.0" x2="990.2" y2="172.0" stroke="#d0d7de"/>
+<line x1="20.0" y1="202.0" x2="990.2" y2="202.0" stroke="#d0d7de"/>
+<line x1="20.0" y1="232.0" x2="990.2" y2="232.0" stroke="#d0d7de"/>
+</svg>

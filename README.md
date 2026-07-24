@@ -5,6 +5,25 @@ reference. Primers are evaluated across many phased human haplotypes, so allele 
 (a binding-site SNP/indel under a primer 3′ end) and **off-target** amplification (paralogs
 a single reference collapses) are caught before you order oligos.
 
+The repo has two pipelines:
+
+1. **Verify pipeline** — bring your own primer pairs (CSV) and check whether they produce a
+   single, unique amplicon across human haplotypes.
+2. **Design pipeline** — give it a genomic target and it designs the primers for you.
+
+Here is the verify pipeline's output — four primer pairs screened across three diverse human
+haplotypes. Cells show the predicted PCR product size(s): **green** = the correct amplicon,
+**red** = an off-target product, grey = **dropout** (a binding-site variant kills the
+product). The CYP2D6 paralog pair co-amplifies the CYP2D7 pseudogene (red) and the dropout
+pair fails on every haplotype — exactly the failures a single-reference design would miss:
+
+![Verify pipeline output — a primer × haplotype amplicon-size matrix](docs/img/verify_matrix.svg)
+
+Try it: run the bundled demo (GAPDH across 3 HPRC haplotypes, ~9 min) with
+`bash demo-design-pipeline/run_demo.sh`, then open the report it writes at
+[`demo-design-pipeline/gapdh/report.html`](demo-design-pipeline/gapdh/report.html) (the verify
+matrix above lives at [`demo-verify-pipeline/verify_matrix.html`](demo-verify-pipeline/verify_matrix.html)).
+
 **New here?** Start with the plain-language introductions:
 [design pipeline](docs/intro_design_pipeline.md) · [verify pipeline](docs/intro_verify_pipeline.md)
 (they explain what a pangenome is and why the pipelines work the way they do).
@@ -121,7 +140,7 @@ See `docs/execution_plan_verify_pipeline.md`.
 ## Status
 
 **Done**
-- **Engine + reporting**: implemented and tested (27 unit/integration tests; `selftest`).
+- **Engine + reporting**: implemented and tested (37 unit/integration tests; `selftest`).
 - **Input**: CHM13 region, **GRCh38 region** (`--target-assembly grch38 --grch38 <fa>`;
   extracted + aligned to CHM13), or FASTA of the locus. Ambiguous mappings fail loud.
 - **Real HPRC R2 data**: `fetch-subset` downloader (official index, md5-pinned); 10-haplotype
