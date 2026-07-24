@@ -90,8 +90,11 @@ def _extract_template(chm13_fasta: str, chrom: str, start: int, end: int) -> str
                    "least the target's chromosome); the coord slice is fetched from it. "
                    "Required when --target-assembly grch38. (For a bare locus sequence with "
                    "no coordinates, use FASTA input instead: --target locus.fa.)")
+@click.option("--quarto/--no-quarto", default=False, show_default=True,
+              help="render the HTML report from the Markdown intermediate via Quarto (needs "
+                   "`quarto` on PATH); falls back to the built-in HTML if unavailable")
 def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
-        target_assembly, grch38_fasta) -> None:
+        target_assembly, grch38_fasta, quarto) -> None:
     """Design + evaluate + rank primers for a target across the haplotype subset.
 
     --target accepts a CHM13 chr:start-end (default), a GRCh38 chr:start-end
@@ -223,7 +226,8 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
         "dropout_mode": mode, "n_haplotypes": len(haplos),
         "candidates": len(candidates), "specificity_checked": k,
     }
-    paths = report.write_all(ranked, outdir, provenance)
+    paths = report.write_all(ranked, outdir, provenance, quarto=quarto,
+                             warn=lambda m: click.echo(f"  warning: {m}"))
     n_pass = sum(1 for rp in ranked if rp.passed)
     click.echo(f"\n{n_pass}/{len(ranked)} specificity-checked pairs pass filters. outputs:")
     for kk, v in paths.items():
@@ -472,8 +476,11 @@ def aggregate_cmd(anchor_json, candidates_json, result_files, config_path, outdi
               help="flag on-target sizes deviating from the expected span by more than this")
 @click.option("--mode", type=click.Choice(["thermo", "rule"]), default=None)
 @click.option("--config", "config_path", default=None)
+@click.option("--quarto/--no-quarto", default=False, show_default=True,
+              help="render the HTML matrix from the Markdown intermediate via Quarto (needs "
+                   "`quarto` on PATH); falls back to the built-in HTML if unavailable")
 def verify_cmd(primers, chm13_fasta, samples_tsv, target_assembly, grch38_fasta, outdir,
-               max_amplicon, size_tolerance, mode, config_path) -> None:
+               max_amplicon, size_tolerance, mode, config_path, quarto) -> None:
     """Screen user-supplied primer pairs across the pangenome (no design).
 
     Reports, per pair x haplotype, the correct amplicon size(s) and any off-target products,
@@ -497,7 +504,8 @@ def verify_cmd(primers, chm13_fasta, samples_tsv, target_assembly, grch38_fasta,
         raise click.ClickException(str(e))
     provenance = {"reference_build": "CHM13v2.0", "target_assembly": target_assembly,
                   "n_pairs": len(specs), "max_amplicon": max_amplicon}
-    paths = report.write_verify(rows, outdir, provenance)
+    paths = report.write_verify(rows, outdir, provenance, quarto=quarto,
+                                warn=lambda m: click.echo(f"  warning: {m}"))
     # brief console summary
     for r in rows:
         drop = sum(1 for c in r.cells if not c.on_target and c.status != "uncertain")
@@ -513,11 +521,16 @@ def verify_cmd(primers, chm13_fasta, samples_tsv, target_assembly, grch38_fasta,
 @click.option("--results-json", required=True, help="an existing results.json")
 @click.option("--outdir", required=True)
 @click.option("--config", "config_path", default=None)
-def rerender_cmd(results_json, outdir, config_path) -> None:
-    """Regenerate TSV/JSON/HTML from a saved results.json with the current code — applies
+@click.option("--quarto/--no-quarto", default=False, show_default=True,
+              help="render the HTML report from the Markdown intermediate via Quarto (needs "
+                   "`quarto` on PATH); falls back to the built-in HTML if unavailable")
+def rerender_cmd(results_json, outdir, config_path, quarto) -> None:
+    """Regenerate TSV/JSON/MD/HTML from a saved results.json with the current code — applies
     metric/template fixes without re-running the pipeline."""
     raw = cfgmod.load_raw(config_path)
-    paths = report.rerender_from_json(results_json, outdir, cfgmod.rank_config(raw))
+    paths = report.rerender_from_json(results_json, outdir, cfgmod.rank_config(raw),
+                                      quarto=quarto,
+                                      warn=lambda m: click.echo(f"  warning: {m}"))
     click.echo("re-rendered:")
     for k, v in paths.items():
         click.echo(f"  {k}: {v}")

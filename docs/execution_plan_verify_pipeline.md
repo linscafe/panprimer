@@ -46,7 +46,7 @@ correct amplicon larger than the off-target cap is never filtered out.
 
 - `samples.py` — shared `load_haplotypes` (also de-dupes the loader used by `run`).
 - `verify.py` — `parse_primer_csv`, `run_verify` → `list[VerifyRow]` (rows of `VerifyCell`).
-- `report.py` — `write_verify` (verify.json / verify.tsv / verify_matrix.html) +
+- `report.py` — `write_verify` (verify.json / verify.tsv / verify_matrix.md / verify_matrix.html) +
   `report/verify_matrix.html.j2` (green on-target / red off-target sizes, grey dropout, `?`).
 - `cli.py` — `pangenome-primer verify` subcommand.
 - `classify.pair_tm` — promote the tiny Tm helper for reuse.
@@ -57,6 +57,9 @@ Reused as-is: `resolve_target`, `project_target`, `find_binding_sites_batch`,
 ## Output
 
 - **verify_matrix.html** — the colored matrix (primary deliverable).
+- **verify_matrix.md** — a readable/diffable Markdown intermediate (same matrix). Pass
+  `--quarto` to render the HTML from it via Quarto (needs `quarto` on PATH); otherwise the
+  built-in template renders the HTML directly. Colors carry as span classes (`[…]{.ok}`).
 - **verify.json / verify.tsv** — scriptable source of truth (per-cell on/off sizes, status).
 
 ## Verification

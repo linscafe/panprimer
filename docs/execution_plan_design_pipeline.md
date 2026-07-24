@@ -90,8 +90,13 @@ inside 15 GB:
 demo-design-pipeline/
 ├── samples.tsv        # 3 diverse haplotypes (AFR/EUR/EAS; subset of config/samples.tsv)
 ├── run_demo.sh        # ensures projection caches, then runs the two-stage pipeline
-└── <locus>/           # results.tsv / results.json / report.html
+└── <locus>/           # results.tsv / results.json / report.md / report.html
 ```
+
+`report.md` is a readable/diffable Markdown intermediate; the HTML is rendered from the
+built-in template by default, or from the Markdown via Quarto with `--quarto` (needs `quarto`
+on PATH — an optional dependency, so nothing regresses without it). Both HTML reports use a
+fixed light theme (white background, dark text).
 
 ## Verification
 
