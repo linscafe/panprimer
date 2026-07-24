@@ -13,7 +13,9 @@
   .wrap { overflow-x: auto; }
   table { border-collapse: collapse; font-size: 0.85rem; }
   th, td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; white-space: nowrap; vertical-align: top; }
-  th.hap { writing-mode: vertical-rl; transform: rotate(180deg); font-weight: 600; }
+  th.hap { font-weight: 600; }
+  /* rotate haplotype headers only when there are many of them (see --vertical below) */
+  th.hap.vertical { writing-mode: vertical-rl; transform: rotate(180deg); }
   .ok  { color: var(--ok);  font-weight: 700; }
   .off { color: var(--off); font-weight: 700; }
   .dev { text-decoration: underline dotted var(--dev); }
@@ -37,11 +39,13 @@
 <p class="muted">{% for k, v in data.provenance.items() %}<code>{{ k }}={{ v }}</code>&nbsp;{% endfor %}</p>
 {% endif %}
 
+{# horizontal headers when few haplotypes; rotate to save width only when >= 6 #}
+{% set vertical = data.haplotypes | length >= 6 %}
 <div class="wrap">
 <table>
   <tr>
     <th>primer_id</th><th>expected bp</th>
-    {% for h in data.haplotypes %}<th class="hap">{{ h }}</th>{% endfor %}
+    {% for h in data.haplotypes %}<th class="hap{{ ' vertical' if vertical }}">{{ h }}</th>{% endfor %}
   </tr>
   {% for r in data.rows %}
   {% set cellmap = {} %}

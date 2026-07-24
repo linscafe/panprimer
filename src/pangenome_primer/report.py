@@ -380,12 +380,26 @@ def _verify_cell_md(c: dict) -> str:
     return " · ".join(parts)  # not '|', which would break the Markdown table
 
 
+# haplotype header columns start at the 4th <th> (after primer_id, expected bp, target);
+# rotate them to vertical only when there are many, to keep the table from getting too wide.
+_MD_VERTICAL_HEADERS = (
+    "```{=html}\n"
+    "<style>thead th:nth-child(n+4){writing-mode:vertical-rl;transform:rotate(180deg);"
+    "white-space:nowrap;}</style>\n"
+    "```"
+)
+
+
 def verify_to_markdown(data: dict) -> str:
-    """Render the verify dict (see verify_to_dict) as a Quarto-ready Markdown matrix."""
+    """Render the verify dict (see verify_to_dict) as a Quarto-ready Markdown matrix.
+
+    Haplotype headers stay horizontal when there are fewer than 6; at 6+ they rotate to
+    vertical so the matrix stays narrow (mirrors the Jinja HTML report)."""
     haps = data["haplotypes"]
     parts = [
         _front_matter("Primer verification across the pangenome"),
         _MD_STYLE,
+        *( [_MD_VERTICAL_HEADERS] if len(haps) >= 6 else [] ),
         "",
         "# Primer verification across the pangenome",
         "",

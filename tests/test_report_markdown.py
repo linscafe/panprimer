@@ -97,6 +97,50 @@ def test_verify_cell_never_contains_bare_pipe():
     assert "{.ok .dev}" in cell                          # size_flag -> dotted underline
 
 
+def _verify_data(n_haps: int) -> dict:
+    haps = [f"h{i}" for i in range(n_haps)]
+    return {
+        "provenance": {}, "haplotypes": haps,
+        "rows": [{
+            "primer_id": "P", "forward": "A", "reverse": "C",
+            "target_input": "chr1:1-100", "target_chm13": "chr1:1-100", "expected_size": 100,
+            "cells": [{"haplotype_id": h, "status": "pass", "on_target": [100],
+                       "off_target": [], "size_flag": False, "reason": ""} for h in haps],
+        }],
+    }
+
+
+def test_verify_markdown_headers_horizontal_when_few():
+    # < 6 haplotypes -> no rotation style injected
+    assert "writing-mode" not in report.verify_to_markdown(_verify_data(5))
+
+
+def test_verify_markdown_headers_vertical_when_many():
+    # >= 6 haplotypes -> rotate the haplotype header columns (4th <th> onward)
+    md = report.verify_to_markdown(_verify_data(6))
+    assert "writing-mode:vertical-rl" in md
+    assert "th:nth-child(n+4)" in md
+
+
+def _render_verify_html(data: dict) -> str:
+    from jinja2 import Environment, FileSystemLoader, select_autoescape
+    tpl_dir = Path(report.__file__).resolve().parent.parent.parent / "report"
+    env = Environment(loader=FileSystemLoader(str(tpl_dir)),
+                      autoescape=select_autoescape(["html", "j2"]))
+    return env.get_template("verify_matrix.html.j2").render(data=data)
+
+
+def test_verify_html_headers_horizontal_when_few():
+    html = _render_verify_html(_verify_data(5))
+    assert 'class="hap"' in html                 # header cells present, not rotated
+    assert 'class="hap vertical"' not in html    # the rotation modifier is absent
+
+
+def test_verify_html_headers_vertical_when_many():
+    html = _render_verify_html(_verify_data(6))
+    assert 'class="hap vertical"' in html
+
+
 def test_quarto_render_when_available(tmp_path):
     if not report.quarto_available():
         pytest.skip("quarto not installed")
