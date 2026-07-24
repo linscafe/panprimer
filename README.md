@@ -114,3 +114,30 @@ This produces `verify_matrix.html` (plus `verify.json` and `.tsv`): a matrix wit
 
 ## 🚧 Not yet
 - The full ~460-haplotype / cloud-scale run.
+
+## 🙏 Acknowledgements
+
+**Data.** This project is built entirely on public genome resources. The pangenome is the [Human Pangenome Reference Consortium (HPRC)](https://humanpangenome.org/) **Release 2** phased haplotype assemblies, and the coordinate backbone is the [Telomere-to-Telomere (T2T) Consortium](https://github.com/marbl/CHM13) **CHM13 v2.0** reference — both distributed via the [`human-pangenomics`](https://github.com/human-pangenomics) AWS Open Data bucket. We gratefully acknowledge these consortia, and the sample donors whose genomes make pangenome-scale primer evaluation possible.
+
+**Software.** The pipeline stands on the shoulders of these open-source tools:
+
+| Tool | Role here |
+|---|---|
+| [Primer3](https://github.com/primer3-org/primer3) / [primer3-py](https://github.com/libnano/primer3-py) | Primer candidate design and the thermodynamic (nearest-neighbor) binding model |
+| [BWA](https://github.com/lh3/bwa) | Genome-wide primer binding-site search per haplotype |
+| [minimap2](https://github.com/lh3/minimap2) / [mappy](https://pypi.org/project/mappy/) | Input anchoring on CHM13 and locus projection onto haplotypes |
+| [SAMtools / HTSlib](https://www.htslib.org/) / [pysam](https://github.com/pysam-developers/pysam) | FASTA indexing and random-access sequence retrieval |
+| [SeqKit](https://github.com/shenwei356/seqkit) | FASTA/Q sequence manipulation |
+| [Nextflow](https://www.nextflow.io/) | Pipeline orchestration and the cloud-scale path |
+| [Quarto](https://quarto.org/) | Optional Markdown → HTML report rendering |
+| [Click](https://click.palletsprojects.com/), [Jinja2](https://jinja.palletsprojects.com/), [PyYAML](https://pyyaml.org/) | CLI, HTML report templating, and configuration |
+
+**Key references** (please cite these if you use the tool):
+- HPRC pangenome — [Liao, W.-W., *et al.* (2023). A draft human pangenome reference. *Nature* **617**, 312–324.](https://doi.org/10.1038/s41586-023-05896-x)
+- CHM13 v2.0 — [Nurk, S., *et al.* (2022). The complete sequence of a human genome. *Science* **376**, 44–53.](https://doi.org/10.1126/science.abj6987)
+- Primer3 — [Untergasser, A., *et al.* (2012). Primer3 — new capabilities and interfaces. *Nucleic Acids Research* **40**, e115.](https://doi.org/10.1093/nar/gks596)
+- minimap2 — [Li, H. (2018). Minimap2: pairwise alignment for nucleotide sequences. *Bioinformatics* **34**, 3094–3100.](https://doi.org/10.1093/bioinformatics/bty191)
+- BWA — [Li, H. & Durbin, R. (2009). Fast and accurate short read alignment with Burrows–Wheeler transform. *Bioinformatics* **25**, 1754–1760.](https://doi.org/10.1093/bioinformatics/btp324)
+- SAMtools / HTSlib — [Danecek, P., *et al.* (2021). Twelve years of SAMtools and BCFtools. *GigaScience* **10**, giab008.](https://doi.org/10.1093/gigascience/giab008)
+- SeqKit2 — [Shen, W., *et al.* (2024). SeqKit2: a Swiss army knife for sequence and alignment processing. *iMeta* **3**, e191.](https://doi.org/10.1002/imt2.191)
+- Nextflow — [Di Tommaso, P., *et al.* (2017). Nextflow enables reproducible computational workflows. *Nature Biotechnology* **35**, 316–319.](https://doi.org/10.1038/nbt.3820)
