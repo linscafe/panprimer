@@ -22,3 +22,5 @@ selftest_out/
 hprc-r2/
 # Demo (kept local only — samples, run script, and example results)
 demo/
+demo-design-pipeline/
+demo-verify-pipeline/

@@ -129,7 +129,7 @@ See `docs/execution_plan_verify_pipeline.md`.
 - **Real-locus validation**: **GAPDH** (easy) → clean universal primer at 100% coverage;
   **CYP2D6** (hard, full-specificity `--top-k 20`) → 14/20 clean, and the tool *catches both*
   failure modes: CYP2D7 pseudogene co-amplification (multi-product) and reference-bias
-  dropout (CHM13-designed primers that fail on real haplotypes). Reports in `demo/results/`.
+  dropout (CHM13-designed primers that fail on real haplotypes). Reports in `demo-design-pipeline/`.
 - **Runtime**: two-stage search (`--top-k`: cheap coverage → genome-wide specificity on the
   shortlist) + `.mmi`-cached projection. 3-haplotype demo ≈ 9 min, ~11.8 GB peak
   (`demo/run_demo.sh`). See `docs/execution_plan_design_pipeline.md`.
