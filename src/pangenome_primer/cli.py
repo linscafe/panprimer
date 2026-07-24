@@ -538,21 +538,29 @@ def rerender_cmd(results_json, outdir, config_path, quarto) -> None:
 
 @cli.command(name="fetch-subset")
 @click.option("--sample", "sample_ids", multiple=True,
-              help="explicit HPRC R2 sample id(s); repeatable. Overrides --per-superpop.")
-@click.option("--per-superpop", default=1, show_default=True,
-              help="samples to pick from each of AFR/EUR/EAS/SAS/AMR (diverse default)")
+              help="explicit HPRC R2 sample id(s); repeatable. Overrides the default/--all/--per-superpop.")
+@click.option("--all", "fetch_all", is_flag=True, default=False,
+              help="select ALL ~460 R2 haplotypes (huge — see the resource check before --download)")
+@click.option("--per-superpop", type=int, default=None,
+              help="advanced: N samples from each of AFR/EUR/EAS/SAS/AMR, both haplotypes "
+                   "(default: 3 hap1 assemblies from AFR/EUR/EAS — the demo subset)")
 @click.option("--data-dir", default="hprc-r2/assemblies", show_default=True,
               help="where assembly FASTAs are/should be stored")
 @click.option("--out", "out_path", default="config/samples.tsv", show_default=True)
 @click.option("--download/--manifest-only", default=False,
               help="actually download (multi-GB each) + verify md5, or just write the manifest")
 @click.option("--limit", default=0, help="cap number of haplotypes (0 = no cap)")
-def fetch_subset_cmd(sample_ids, per_superpop, data_dir, out_path, download, limit) -> None:
-    """Select a diverse HPRC R2 haplotype subset and write config/samples.tsv.
+@click.option("--yes", is_flag=True, default=False,
+              help="skip the resource-check confirmation prompt (for scripts/CI)")
+def fetch_subset_cmd(sample_ids, fetch_all, per_superpop, data_dir, out_path,
+                     download, limit, yes) -> None:
+    """Select an HPRC R2 haplotype subset and write config/samples.tsv.
 
-    Default is manifest-only: fetch the official index + sample metadata, pick the subset,
-    pin provenance (md5 + S3 URL + accession), and write the manifest. Pass --download to
-    pull the assemblies (≈1 GB each) into --data-dir and verify their md5s."""
+    Default is a small, diverse 3-haplotype set (AFR/EUR/EAS, hap1 — the demo subset),
+    manifest-only: fetch the official index + sample metadata, pin provenance (md5 + S3 URL +
+    accession), and write the manifest. Pass --download to pull the assemblies (≈1 GB each)
+    into --data-dir and verify md5s; --download first prints a disk/RAM resource check and, for
+    a large or space-tight pull, asks for confirmation. Use --all for the whole pangenome."""
     from . import hprc
 
     click.echo("fetching HPRC R2 assembly index + sample metadata ...")
@@ -561,8 +569,12 @@ def fetch_subset_cmd(sample_ids, per_superpop, data_dir, out_path, download, lim
         chosen = hprc.select_samples(records, list(sample_ids))
         if not chosen:
             raise click.ClickException(f"no R2 haplotypes for samples: {list(sample_ids)}")
-    else:
+    elif fetch_all:
+        chosen = hprc.select_all(records)
+    elif per_superpop is not None:
         chosen = hprc.select_diverse(records, per_superpop=per_superpop)
+    else:
+        chosen = hprc.select_default(records)  # 3 hap1: AFR/EUR/EAS
     if limit:
         chosen = chosen[:limit]
 
@@ -572,6 +584,18 @@ def fetch_subset_cmd(sample_ids, per_superpop, data_dir, out_path, download, lim
 
     md5s: dict[str, str] = {}
     if download:
+        rc = hprc.assess_resources(len(chosen), data_dir)
+        click.echo(f"\nresource check for {rc.n_haps} haplotype(s):")
+        click.echo(f"  download now  : ~{rc.download_gb:.0f} GB (.fa.gz)")
+        click.echo(f"  after indexing: ~{rc.indexed_gb:.0f} GB (FASTA + bwa + minimap2) "
+                   f"+ ~{hprc.CHM13_GB:.0f} GB CHM13")
+        click.echo(f"  free disk     : ~{rc.free_disk_gb:.0f} GB at {data_dir}  "
+                   f"[{'ok' if rc.disk_ok else 'INSUFFICIENT'}]")
+        ram = f"~{rc.total_ram_gb:.0f} GB" if rc.total_ram_gb else "unknown"
+        click.echo(f"  system RAM    : {ram} (pipeline peak ~{hprc.PIPELINE_PEAK_GB:.0f} GB, "
+                   f"one index at a time)  [{'ok' if rc.ram_ok else 'LOW'}]")
+        if (fetch_all or rc.risky) and not yes:
+            click.confirm("proceed with download?", abort=True)
         for r in chosen:
             click.echo(f"downloading {r.hap_id} ...")
             hprc.download_haplotype(r, data_dir)

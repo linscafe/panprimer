@@ -61,3 +61,42 @@ def test_select_samples_explicit(monkeypatch):
     chosen = hprc.select_samples(recs, ["S_UNK"])
     assert [r.hap for r in chosen] == [1]
     assert chosen[0].sample_id == "S_UNK"
+
+
+def test_select_default_is_hap1_diverse(monkeypatch):
+    _patch(monkeypatch)
+    recs = hprc.load_records("index", "meta")
+    chosen = hprc.select_default(recs)
+    # fixture has AFR + EUR (no EAS); default is one hap1 assembly per superpop
+    assert [r.hap_id for r in chosen] == ["S_AFR#hap1", "S_EUR#hap1"]
+    assert all(r.hap == 1 for r in chosen)
+
+
+def test_select_all_returns_everything(monkeypatch):
+    _patch(monkeypatch)
+    recs = hprc.load_records("index", "meta")
+    chosen = hprc.select_all(recs)
+    assert len(chosen) == len(recs)                       # includes UNK + both haplotypes
+    assert [(r.sample_id, r.hap) for r in chosen] == sorted((r.sample_id, r.hap) for r in recs)
+
+
+def test_assess_resources_ok(monkeypatch, tmp_path):
+    monkeypatch.setattr(hprc, "free_disk_gb", lambda p: 100.0)
+    monkeypatch.setattr(hprc, "total_ram_gb", lambda: 16.0)
+    rc = hprc.assess_resources(3, str(tmp_path))
+    assert (rc.download_gb, rc.indexed_gb) == (3.0, 45.0)  # 1 + 15 GB/hap
+    assert rc.disk_ok and rc.ram_ok and not rc.risky
+
+
+def test_assess_resources_flags_shortfalls(monkeypatch, tmp_path):
+    monkeypatch.setattr(hprc, "free_disk_gb", lambda p: 20.0)  # < 45 + 8.5 CHM13
+    monkeypatch.setattr(hprc, "total_ram_gb", lambda: 8.0)     # < 12 + 3 headroom
+    rc = hprc.assess_resources(3, str(tmp_path))
+    assert not rc.disk_ok and not rc.ram_ok and rc.risky
+
+
+def test_assess_resources_unknown_ram_not_blocking(monkeypatch, tmp_path):
+    monkeypatch.setattr(hprc, "free_disk_gb", lambda p: 100.0)
+    monkeypatch.setattr(hprc, "total_ram_gb", lambda: 0.0)     # undeterminable
+    rc = hprc.assess_resources(1, str(tmp_path))
+    assert rc.ram_ok and not rc.risky
