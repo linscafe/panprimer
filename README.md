@@ -24,6 +24,16 @@ Try it: run the bundled demo (GAPDH across 3 HPRC haplotypes, ~9 min) with
 [`demo-design-pipeline/gapdh/report.html`](demo-design-pipeline/gapdh/report.html) (the verify
 matrix above lives at [`demo-verify-pipeline/verify_matrix.html`](demo-verify-pipeline/verify_matrix.html)).
 
+> [!WARNING]
+> **First-time data setup is heavy — plan ahead.** Before the demo or any real run you must
+> download and index the genome data once (see [Setup](#setup) and [Get the data](#get-the-data)):
+> the multi-GB downloads plus `bwa`/`minimap2` indexing of ~3 Gb assemblies is a **one-time job
+> that takes many hours** (often best left running overnight).
+> - **Storage:** ~55 GB for the 3-haplotype demo — about **15 GB per haplotype** (FASTA + bwa
+>   index + minimap2 index) plus **~8.5 GB** for the CHM13 reference. Budget ~15 GB more per
+>   added haplotype.
+> - **Memory:** up to **~12 GB RAM** at peak (one genome index in memory at a time).
+
 **New here?** Start with the plain-language introductions:
 [design pipeline](docs/intro_design_pipeline.md) · [verify pipeline](docs/intro_verify_pipeline.md)
 (they explain what a pangenome is and why the pipelines work the way they do).
