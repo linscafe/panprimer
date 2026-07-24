@@ -1,14 +1,10 @@
 # Configuration reference (`config/defaults.yaml`)
 
-Every value is overridable on the CLI or via `--config <file.yaml>`. Terminology is defined
-in [`CONTEXT.md`](../CONTEXT.md). This page explains each parameter — especially the
-abbreviations in the `dropout` and `rank` sections.
+Every value is overridable on the CLI or via `--config <file.yaml>`. Terminology is defined in [`CONTEXT.md`](../CONTEXT.md). This page explains each parameter — especially the abbreviations in the `dropout` and `rank` sections.
 
 Two thresholds are easy to confuse:
-- **`dropout.thermo.tm_drop_max`** is a per-**site** binding test — "does *this* primer stick
-  *here*?"
-- **`rank.min_coverage`** is a per-**pair** summary gate — "does the pair work across enough
-  people?"
+- **`dropout.thermo.tm_drop_max`** is a per-**site** binding test — "does *this* primer stick *here*?"
+- **`rank.min_coverage`** is a per-**pair** summary gate — "does the pair work across enough people?"
 
 ---
 
@@ -42,14 +38,11 @@ Two thresholds are easy to confuse:
 
 ## `dropout:` — does a primer actually bind at a site?
 
-`mode` — which model decides bind-vs-dropout: `thermo` (physics-based, primary) or `rule`
-(simple mismatch counts).
+`mode` — which model decides bind-vs-dropout: `thermo` (physics-based, primary) or `rule` (simple mismatch counts).
 
 ### `dropout.thermo` — nearest-neighbor melting-temperature model (via primer3)
 
-The first two are **decision thresholds**; the last four are **wet-lab reaction conditions**
-fed to primer3's salt-corrected (SantaLucia) Tm calculation. Set the four concentrations to
-match your actual PCR protocol.
+The first two are **decision thresholds**; the last four are **wet-lab reaction conditions** fed to primer3's salt-corrected (SantaLucia) Tm calculation. Set the four concentrations to match your actual PCR protocol.
 
 | key | meaning | unit |
 |---|---|---|
@@ -62,8 +55,7 @@ match your actual PCR protocol.
 
 ### `dropout.rule` — the simple alternative (no thermodynamics)
 
-`mm` = **mismatches**. Reads as: *a primer binds iff it has ≤ `max_total_mm` mismatches total
-**and** ≤ `max_3prime_mm` mismatches within its 3′-terminal `suffix` bases.*
+`mm` = **mismatches**. Reads as: *a primer binds iff it has ≤ `max_total_mm` mismatches total **and** ≤ `max_3prime_mm` mismatches within its 3′-terminal `suffix` bases.*
 
 | key | meaning |
 |---|---|
@@ -71,8 +63,7 @@ match your actual PCR protocol.
 | `max_3prime_mm` | Max mismatches allowed inside the 3′ window. `0` = none tolerated near the 3′ end. |
 | `suffix` | Size of that 3′ window (nt). `5` = the last 5 bases. |
 
-Defaults `2 / 0 / 5` = "≤2 mismatches total, with a perfectly matched 3′ pentamer" — the
-conservative policy from the reference notes (`max_total_mm=2; max_3prime_mm=0; suffix=5`).
+Defaults `2 / 0 / 5` = "≤2 mismatches total, with a perfectly matched 3′ pentamer" — the conservative policy from the reference notes (`max_total_mm=2; max_3prime_mm=0; suffix=5`).
 
 ---
 
@@ -87,11 +78,8 @@ Every gate is applied over the **evaluable** haplotypes (total − `uncertain`).
 | `max_multi_product` | Max haplotypes allowed to show **multiple products** (extra bands). `0` = zero tolerance. |
 | `min_evaluable` | Minimum haplotypes that must project successfully to judge the pair at all. `1` = need ≥1 non-uncertain haplotype. |
 
-Survivors of these gates are then ordered by a transparent tie-break (coverage → uniqueness →
-off-target count → Primer3 penalty); see the ranking logic in `src/pangenome_primer/rank.py`.
+Survivors of these gates are then ordered by a transparent tie-break (coverage → uniqueness → off-target count → Primer3 penalty); see the ranking logic in `src/pangenome_primer/rank.py`.
 
 ## Verify-mode knobs (CLI flags, not in this file)
 
-`pangenome-primer verify` reuses the `dropout` model but takes its size bounds on the command
-line: `--max-amplicon` (max off-target product size, default 2000 bp) and `--size-tolerance`
-(flag on-target sizes deviating from the expected span by more than this, default 20 bp).
+`pangenome-primer verify` reuses the `dropout` model but takes its size bounds on the command line: `--max-amplicon` (max off-target product size, default 2000 bp) and `--size-tolerance` (flag on-target sizes deviating from the expected span by more than this, default 20 bp).

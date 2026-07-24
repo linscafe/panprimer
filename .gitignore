@@ -23,3 +23,5 @@ hprc-r2/
 # Demo (kept local only — samples, run script, and example results)
 demo-design-pipeline/
 demo-verify-pipeline/
+# Reference notes (kept local only)
+ref/
