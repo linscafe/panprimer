@@ -58,6 +58,13 @@ def _aligner(fasta: str, preset: str):
     return mappy.Aligner(fasta, preset=preset)
 
 
+def make_aligner(fasta: str, preset: str = "asm5"):
+    """Public builder for a reusable haplotype aligner. Loading the (multi-GB) index is the
+    expensive part; callers that project many targets against one haplotype should build it
+    once and pass it to project_target/project_locus instead of reloading per call."""
+    return _aligner(fasta, preset)
+
+
 def _confident_hits(aligner, seq: str, min_frac: float, min_mapq: int):
     hits = [
         h
@@ -146,10 +153,13 @@ def project_target(
     tend: int,
     template_seq: str,
     haplotype_fasta: str,
+    *,
+    aligner=None,
 ) -> Projection:
     """Project a CHM13 target interval onto a haplotype. Prefers the whole-genome PAF cache
     (a fast coordinate lift; see align_cache) and falls back to on-the-fly alignment of the
-    template sequence when no cache exists."""
+    template sequence when no cache exists. Pass a prebuilt `aligner` (see make_aligner) to
+    reuse one index load across many targets on the same haplotype."""
     from pathlib import Path
 
     from . import align_cache
@@ -157,18 +167,20 @@ def project_target(
     paf = align_cache.paf_path(haplotype_fasta)
     if Path(paf).exists():
         return align_cache.project_from_paf(paf, chrom, tstart, tend, haplotype_fasta)
-    return project_locus(template_seq, haplotype_fasta)
+    return project_locus(template_seq, haplotype_fasta, aligner=aligner)
 
 
 def project_locus(
     target_seq: str,
     haplotype_fasta: str,
     *,
+    aligner=None,
     min_frac: float = 0.8,
     min_mapq: int = 20,
 ) -> Projection:
-    """Project the CHM13 target (± flank) sequence onto one haplotype assembly."""
-    aligner = _aligner(haplotype_fasta, preset="asm5")
+    """Project the CHM13 target (± flank) sequence onto one haplotype assembly. Reuses a
+    prebuilt `aligner` when given (avoids reloading the index)."""
+    aligner = aligner or _aligner(haplotype_fasta, preset="asm5")
     if not aligner:
         return Projection(None, reason=f"failed to index {haplotype_fasta}")
     hits = _confident_hits(aligner, target_seq, min_frac, min_mapq)

@@ -13,7 +13,7 @@ from . import config as cfgmod
 from .classify import pair_tm
 from .engine import EvalConfig, evaluate_with_sites
 from .model import Primer, PrimerPair
-from .project import project_target, resolve_target
+from .project import make_aligner, project_target, resolve_target
 from .samples import load_haplotypes
 
 # target column aliases accepted in the CSV header (case-insensitive)
@@ -98,7 +98,12 @@ def run_verify(
     pad: int = 250,
     progress=lambda s: None,
 ) -> list[VerifyRow]:
+    from pathlib import Path
+
     import pysam
+
+    from . import align_cache
+    from .bwa_backend import find_binding_sites_batch
 
     raw = cfgmod.load_raw(config_path)
     mode = mode or raw["dropout"]["mode"]
@@ -108,17 +113,9 @@ def run_verify(
     haplos = load_haplotypes(samples_tsv)
     all_seqs = [s.forward for s in specs] + [s.reverse for s in specs]
 
-    # one genome-wide bwa search per haplotype covers every pair's primers (index loaded once)
-    from .bwa_backend import find_binding_sites_batch
-    sites: dict[str, dict] = {}
-    fafiles: dict[str, "pysam.FastaFile"] = {}
-    for hid, fasta in haplos:
-        progress(f"genome-wide search on {hid} ...")
-        sites[hid] = find_binding_sites_batch(all_seqs, fasta, hid, max_mm)
-        fafiles[hid] = pysam.FastaFile(fasta)
-
+    # Resolve each pair's target + build its eval config ONCE (independent of haplotype).
     chm = pysam.FastaFile(chm13_fasta)
-    rows: list[VerifyRow] = []
+    pctx = []  # (spec, chrom, start, end, tstart, tend, expected_size, template, pair, ecfg)
     for spec in specs:
         chrom, start, end = resolve_target(
             spec.target, chm13_fasta, assembly=assembly, grch38_fasta=grch38_fasta)
@@ -126,34 +123,44 @@ def run_verify(
         clen = chm.get_reference_length(chrom)
         tstart, tend = max(0, start - pad), min(clen, end + pad)
         template = chm.fetch(chrom, tstart, tend)
-        # the off-target cap bounds spurious products; never filter out a larger *correct* one
-        max_prod = max(max_amplicon, expected_size + pad)
+        max_prod = max(max_amplicon, expected_size + pad)  # never filter out a larger correct one
         pair = PrimerPair(spec.primer_id, Primer(f"{spec.primer_id}_F", spec.forward),
                           Primer(f"{spec.primer_id}_R", spec.reverse),
                           product_size_chm13=expected_size)
         ecfg = EvalConfig(
             mode=mode, max_mismatches=max_mm, min_product=40, max_product=max_prod,
             rule_cfg=cfgmod.rule_config(raw),
-            thermo_cfg=cfgmod.thermo_config(raw, pair_tm(spec.forward, spec.reverse, tm_opt)),
-        )
-        cells = []
-        for hid, fasta in haplos:
-            proj = project_target(chrom, tstart, tend, template, fasta)
+            thermo_cfg=cfgmod.thermo_config(raw, pair_tm(spec.forward, spec.reverse, tm_opt)))
+        pctx.append((spec, chrom, start, end, tstart, tend, expected_size, template, pair, ecfg))
+    chm.close()
+
+    # Haplotype-outer: one genome-wide bwa search AND one projection-index load per haplotype,
+    # reused across all pairs; the index is released before the next haplotype (bounds RAM).
+    cells: dict[tuple[str, str], VerifyCell] = {}
+    for hid, fasta in haplos:
+        progress(f"genome-wide search on {hid} ...")
+        sites = find_binding_sites_batch(all_seqs, fasta, hid, max_mm)
+        aligner = None if Path(align_cache.paf_path(fasta)).exists() else make_aligner(fasta)
+        fa = pysam.FastaFile(fasta)
+        for (spec, chrom, start, end, tstart, tend, expected_size, template, pair, ecfg) in pctx:
+            proj = project_target(chrom, tstart, tend, template, fasta, aligner=aligner)
             if proj.locus is None:
-                cells.append(VerifyCell(hid, "uncertain", reason=proj.reason))
+                cells[(spec.primer_id, hid)] = VerifyCell(hid, "uncertain", reason=proj.reason)
                 continue
-            fa = fafiles[hid]
             res = evaluate_with_sites(
-                pair, hid, sites[hid].get(spec.forward, []), sites[hid].get(spec.reverse, []),
+                pair, hid, sites.get(spec.forward, []), sites.get(spec.reverse, []),
                 proj.locus, lambda c, s, e, _fa=fa: _fa.fetch(c, s, e), ecfg)
             on = sorted(a.size for a in res.amplicons if a.on_target)
             off = sorted(a.size for a in res.amplicons if not a.on_target)
             flag = any(abs(sz - expected_size) > size_tolerance for sz in on)
-            cells.append(VerifyCell(hid, res.status.value, on, off, flag, res.reason))
-        rows.append(VerifyRow(spec.primer_id, spec.forward, spec.reverse, spec.target,
-                              f"{chrom}:{start}-{end}", expected_size, cells))
-
-    chm.close()
-    for fa in fafiles.values():
+            cells[(spec.primer_id, hid)] = VerifyCell(hid, res.status.value, on, off, flag, res.reason)
         fa.close()
+        aligner = None  # release the projection index before the next haplotype
+
+    rows = []
+    for (spec, chrom, start, end, tstart, tend, expected_size, template, pair, ecfg) in pctx:
+        rows.append(VerifyRow(
+            spec.primer_id, spec.forward, spec.reverse, spec.target,
+            f"{chrom}:{start}-{end}", expected_size,
+            cells=[cells[(spec.primer_id, hid)] for hid, _ in haplos]))
     return rows

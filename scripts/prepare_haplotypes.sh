@@ -58,8 +58,9 @@ grep -vE '^#|^sample\b' "$TSV" | while IFS=$'\t' read -r sample hap superpop loc
   elif [ "${BUILD_PAF:-0}" = "1" ] && [ -s "${CHM13_MMI:-/nonexistent}" ]; then
     # whole-genome alignment: memory scales with threads. MM_THREADS=4 fits 15 GB; bump it
     # on high-RAM / cloud. This is the instant-per-query-lift path (item 1) at scale.
-    t0=$(date +%s); log "$id projection PAF (BUILD_PAF, -t ${MM_THREADS:-4}) ..."
-    if minimap2 -x asm5 -t "${MM_THREADS:-4}" --secondary=no "$CHM13_MMI" "$fa" > "$fa.chm13.paf.part" 2>>"$LOG"; then
+    t0=$(date +%s); log "$id projection PAF (BUILD_PAF, -c, -t ${MM_THREADS:-4}) ..."
+    # -c emits base-level CIGAR (cg:Z:) so projection lifts coordinates precisely
+    if minimap2 -c -x asm5 -t "${MM_THREADS:-4}" --secondary=no "$CHM13_MMI" "$fa" > "$fa.chm13.paf.part" 2>>"$LOG"; then
       mv "$fa.chm13.paf.part" "$fa.chm13.paf"; log "$id PAF done ($(( ($(date +%s)-t0)/60 )) min)"
     else log "$id PAF FAILED"; rm -f "$fa.chm13.paf.part"; fi
   elif [ ! -s "$fa.mmi" ]; then

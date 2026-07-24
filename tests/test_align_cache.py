@@ -49,6 +49,25 @@ def test_lift_minus_strand_revcomps(tmp_path):
     assert proj.haplotype_seq == revcomp(seq[600:650])
 
 
+def test_cigar_precise_lift_beats_linear(tmp_path):
+    """A 50 bp query insertion inside the block shifts coordinates: CIGAR lifting places it
+    exactly, linear interpolation is off by the insertion size."""
+    fa, seq = _hap(tmp_path)
+    # CHM13 chr1:[200,400] <-> hapctg:[500,750] on +, CIGAR 100M 50I 100M (50 bp query insert)
+    paf = tmp_path / "hap.chm13.paf"
+    paf.write_text("\t".join([
+        "hapctg", "2000", "500", "750", "+", "chr1", "300000000", "200", "400",
+        "200", "250", "60", "cg:Z:100M50I100M"]) + "\n")
+    b = align_cache._overlapping_blocks(str(paf), "chr1", 290, 310)[0]
+    assert b.cigar == [(100, "M"), (50, "I"), (100, "M")]
+    # target 300 sits right after the insertion
+    assert align_cache._lift_cigar(b, 300) == 650   # precise: 100 M + 50 I
+    assert align_cache._lift(b, 300) == 625          # linear: off by the 25 bp half-insertion
+    proj = align_cache.project_from_paf(str(paf), "chr1", 290, 310, fa)
+    assert proj.locus.start == 590 and proj.locus.end == 660
+    assert proj.haplotype_seq == seq[590:660]
+
+
 def test_no_block_is_uncertain(tmp_path):
     fa, _ = _hap(tmp_path)
     paf = tmp_path / "hap.chm13.paf"
