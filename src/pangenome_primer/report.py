@@ -345,6 +345,11 @@ def verify_to_dict(rows, provenance: dict | None = None) -> dict:
                         "haplotype_id": c.haplotype_id, "status": c.status,
                         "on_target": c.on_target, "off_target": c.off_target,
                         "size_flag": c.size_flag, "reason": c.reason,
+                        # Must be serialized: every renderer below (and the Jinja template)
+                        # reads this dict, not the dataclass. Omitting it made capped cells
+                        # fall through to the "dropout" branch -- the exact mislabel the cap
+                        # exists to prevent.
+                        "site_cap": c.site_cap,
                     }
                     for c in r.cells
                 ],
@@ -357,6 +362,9 @@ def verify_to_dict(rows, provenance: dict | None = None) -> dict:
 def _cell_text(c) -> str:
     if c["status"] == "uncertain":
         return "?"
+    # Before the empty-product test: a capped cell enumerates no products by design.
+    if c.get("site_cap"):
+        return f">{c['site_cap']} binding sites"
     if not c["on_target"] and not c["off_target"]:
         return "dropout"
     parts = [",".join(map(str, c["on_target"]))] if c["on_target"] else []
@@ -369,6 +377,8 @@ def _verify_cell_md(c: dict) -> str:
     """One verify matrix cell as Quarto Markdown: coloured product sizes via span classes."""
     if c["status"] == "uncertain":
         return "[?]{.unc}"
+    if c.get("site_cap"):  # before the empty-product test; see _cell_text
+        return f"[>{c['site_cap']} binding sites]{{.cap}}"
     if not c["on_target"] and not c["off_target"]:
         return "[dropout]{.drop}"
     cls = "{.ok .dev}" if c["size_flag"] else "{.ok}"

@@ -22,6 +22,11 @@ def cell_segments(c: dict) -> list[tuple[str, str, bool]]:
     """(text, colour, italic) segments for one matrix cell."""
     if c["status"] == "uncertain":
         return [("?", GREY, False)]
+    # Before the empty-product test: a cell capped by search.max_binding_sites enumerates no
+    # products, so it would otherwise render as "dropout" -- reading a promiscuous primer as
+    # a failure to amplify, which is the exact mislabel the cap exists to prevent.
+    if c.get("site_cap"):
+        return [(f">{c['site_cap']} binding sites", RED, False)]
     if not c["on_target"] and not c["off_target"]:
         return [("dropout", GREY, True)]
     segs: list[tuple[str, str, bool]] = []

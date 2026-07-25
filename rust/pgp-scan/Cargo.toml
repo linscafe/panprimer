@@ -1,0 +1,28 @@
+[package]
+name = "pgp-scan"
+version = "0.1.0"
+edition = "2021"
+description = "Genome-wide <=k-mismatch primer binding-site scanner over a BGZF FASTA"
+license = "MIT"
+publish = false
+
+[lib]
+name = "pgp_scan"
+# `pangenome_primer._scan` is a Python extension module; cdylib is the only artifact
+# maturin needs. (No rlib: pyo3's `extension-module` feature leaves the CPython symbols
+# unresolved, which breaks a plain `cargo test` link. Correctness is covered by the
+# Python-side differential suite in tests/test_rust_backend_differential.py, which
+# compares this scanner against `binding.find_binding_sites_naive` base for base.)
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.29", features = ["extension-module"] }
+rayon = "1.10"
+flate2 = "1.0"          # default features => pure-Rust miniz_oxide inflate (no C linkage)
+memchr = "2.7"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+# NOT panic="abort": pyo3 turns a Rust panic into a Python exception by unwinding.

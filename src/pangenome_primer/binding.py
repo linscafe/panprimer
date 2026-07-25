@@ -105,6 +105,42 @@ def find_binding_sites_naive(
     return plus + minus
 
 
+def _find_rust(
+    primer_name: str,
+    primer_seq: str,
+    ref: str,
+    haplotype_id: str,
+    chrom: str,
+    max_mismatches: int,
+) -> list[BindingSite]:
+    from .rust_backend import available, find_binding_sites_in_seq
+
+    if not available():
+        # Degrade, never break: the pure-Python comparator is the same answer, slower.
+        return find_binding_sites_naive(
+            primer_name, primer_seq, ref, haplotype_id, chrom, max_mismatches
+        )
+    return find_binding_sites_in_seq(
+        primer_name, primer_seq, ref, haplotype_id, chrom, max_mismatches
+    )
+
+
+#: In-memory single-primer backends. Every entry must return exactly what
+#: `find_binding_sites_naive` returns for the same arguments -- that equivalence is what
+#: `tests/test_rust_backend_differential.py` asserts over thousands of random cases.
+#:
+#: `bwa` maps to the naive comparator on purpose and is not a placeholder: `bwa` is a
+#: genome-wide, *file*-based index search with no in-memory mode, and `bwa_backend` already
+#: re-scores every candidate window it finds with `find_binding_sites_naive` (see
+#: `bwa_backend.py`), so the naive comparator IS what the bwa path answers with once a
+#: reference string is in hand. The genome-wide dispatcher lives in `search.py`.
+_BACKENDS = {
+    "naive": find_binding_sites_naive,
+    "rust": _find_rust,
+    "bwa": find_binding_sites_naive,
+}
+
+
 def find_binding_sites(
     primer_name: str,
     primer_seq: str,
@@ -114,12 +150,15 @@ def find_binding_sites(
     max_mismatches: int,
     backend: str = "naive",
 ) -> list[BindingSite]:
-    if backend == "naive":
-        return find_binding_sites_naive(
-            primer_name, primer_seq, ref, haplotype_id, chrom, max_mismatches
-        )
-    if backend == "bwa":  # pragma: no cover - requires the conda env
-        raise NotImplementedError(
-            "bwa backend is wired in modules/binding_search.nf once the conda env exists"
-        )
-    raise ValueError(f"unknown binding backend: {backend!r}")
+    """Find binding sites of `primer_seq` in the in-memory reference string `ref`.
+
+    See `_BACKENDS` for the registry. For the genome-wide (whole-assembly, file-based)
+    seam, use `search.find_binding_sites_batch` instead.
+    """
+    try:
+        fn = _BACKENDS[backend]
+    except KeyError:
+        raise ValueError(
+            f"unknown binding backend: {backend!r} (expected one of {sorted(_BACKENDS)})"
+        ) from None
+    return fn(primer_name, primer_seq, ref, haplotype_id, chrom, max_mismatches)

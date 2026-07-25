@@ -41,6 +41,8 @@ class VerifyCell:
     off_target: list[int] = field(default_factory=list)  # off-target amplicon sizes
     size_flag: bool = False                       # on-target size deviates from expected
     reason: str = ""
+    site_cap: int | None = None                   # set when the binding-site cap tripped;
+                                                  # cell renders ">N binding sites"
 
 
 @dataclass
@@ -103,11 +105,15 @@ def run_verify(
     import pysam
 
     from . import align_cache
-    from .bwa_backend import find_binding_sites_batch
+    from .search import backend_from_config, find_binding_sites_batch
 
     raw = cfgmod.load_raw(config_path)
     mode = mode or raw["dropout"]["mode"]
     max_mm = raw["search"]["max_mismatches"]
+    # Absent from an older config file => fall back to the EvalConfig default rather than
+    # KeyError, so a user's pinned defaults.yaml keeps working.
+    max_sites = raw["search"].get("max_binding_sites", EvalConfig.max_binding_sites)
+    backend = backend_from_config(raw, warn=progress)
     tm_opt = cfgmod.design_config(raw).tm_opt
 
     haplos = load_haplotypes(samples_tsv)
@@ -129,21 +135,25 @@ def run_verify(
                           product_size_chm13=expected_size)
         ecfg = EvalConfig(
             mode=mode, max_mismatches=max_mm, min_product=40, max_product=max_prod,
+            max_binding_sites=max_sites,
             rule_cfg=cfgmod.rule_config(raw),
             thermo_cfg=cfgmod.thermo_config(raw, pair_tm(spec.forward, spec.reverse, tm_opt)))
         pctx.append((spec, chrom, start, end, tstart, tend, expected_size, template, pair, ecfg))
     chm.close()
 
-    # Haplotype-outer: one genome-wide bwa search AND one projection-index load per haplotype,
+    # Haplotype-outer: one genome-wide search AND one projection-index load per haplotype,
     # reused across all pairs; the index is released before the next haplotype (bounds RAM).
+    # One FASTA handle per haplotype is opened here and threaded into both the batch search
+    # and the per-pair PAF-lift projection, instead of each reopening its own. (The rust
+    # backend reads the BGZF file itself and ignores the handle; the bwa backend uses it.)
     cells: dict[tuple[str, str], VerifyCell] = {}
     for hid, fasta in haplos:
-        progress(f"genome-wide search on {hid} ...")
-        sites = find_binding_sites_batch(all_seqs, fasta, hid, max_mm)
-        aligner = None if Path(align_cache.paf_path(fasta)).exists() else make_aligner(fasta)
+        progress(f"genome-wide search ({backend}) on {hid} ...")
         fa = pysam.FastaFile(fasta)
+        sites = find_binding_sites_batch(all_seqs, fasta, hid, max_mm, fa=fa, backend=backend)
+        aligner = None if Path(align_cache.paf_path(fasta)).exists() else make_aligner(fasta)
         for (spec, chrom, start, end, tstart, tend, expected_size, template, pair, ecfg) in pctx:
-            proj = project_target(chrom, tstart, tend, template, fasta, aligner=aligner)
+            proj = project_target(chrom, tstart, tend, template, fasta, aligner=aligner, fa=fa)
             if proj.locus is None:
                 cells[(spec.primer_id, hid)] = VerifyCell(hid, "uncertain", reason=proj.reason)
                 continue
@@ -153,7 +163,13 @@ def run_verify(
             on = sorted(a.size for a in res.amplicons if a.on_target)
             off = sorted(a.size for a in res.amplicons if not a.on_target)
             flag = any(abs(sz - expected_size) > size_tolerance for sz in on)
-            cells[(spec.primer_id, hid)] = VerifyCell(hid, res.status.value, on, off, flag, res.reason)
+            # The engine reports a tripped binding-site cap in `reason`; surface it as a
+            # first-class cell field so the matrix can render ">N binding sites" rather
+            # than an empty multi_product cell.
+            capped = ecfg.max_binding_sites if "binding sites" in res.reason else None
+            cells[(spec.primer_id, hid)] = VerifyCell(
+                hid, res.status.value, on, off, flag, res.reason, site_cap=capped
+            )
         fa.close()
         aligner = None  # release the projection index before the next haplotype
 

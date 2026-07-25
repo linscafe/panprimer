@@ -1,0 +1,203 @@
+{
+  "provenance": {
+    "reference_build": "CHM13v2.0",
+    "target_assembly": "chm13",
+    "n_pairs": 4,
+    "max_amplicon": 2000
+  },
+  "haplotypes": [
+    "HG01884#hap1",
+    "HG00097#hap1",
+    "HG00408#hap1"
+  ],
+  "rows": [
+    {
+      "primer_id": "GAPDH_clean",
+      "forward": "CGCTTCATGCTGCACATCTC",
+      "reverse": "TTCAGTAATGGCTGCCTGGG",
+      "target_input": "chr12:6551925-6552126",
+      "target_chm13": "chr12:6551925-6552126",
+      "expected_size": 201,
+      "cells": [
+        {
+          "haplotype_id": "HG01884#hap1",
+          "status": "pass",
+          "on_target": [
+            201
+          ],
+          "off_target": [],
+          "size_flag": false,
+          "reason": "single on-target product 201 bp",
+          "site_cap": null
+        },
+        {
+          "haplotype_id": "HG00097#hap1",
+          "status": "pass",
+          "on_target": [
+            201
+          ],
+          "off_target": [],
+          "size_flag": false,
+          "reason": "single on-target product 201 bp",
+          "site_cap": null
+        },
+        {
+          "haplotype_id": "HG00408#hap1",
+          "status": "pass",
+          "on_target": [
+            201
+          ],
+          "off_target": [],
+          "size_flag": false,
+          "reason": "single on-target product 201 bp",
+          "site_cap": null
+        }
+      ]
+    },
+    {
+      "primer_id": "CYP2D6_clean",
+      "forward": "CAGCTCGGACTACGGTCATC",
+      "reverse": "ATCCTGGCTTGACAAGAGGC",
+      "target_input": "chr22:42609159-42609439",
+      "target_chm13": "chr22:42609159-42609439",
+      "expected_size": 280,
+      "cells": [
+        {
+          "haplotype_id": "HG01884#hap1",
+          "status": "pass",
+          "on_target": [
+            280
+          ],
+          "off_target": [],
+          "size_flag": false,
+          "reason": "single on-target product 280 bp",
+          "site_cap": null
+        },
+        {
+          "haplotype_id": "HG00097#hap1",
+          "status": "pass",
+          "on_target": [
+            280
+          ],
+          "off_target": [],
+          "size_flag": false,
+          "reason": "single on-target product 280 bp",
+          "site_cap": null
+        },
+        {
+          "haplotype_id": "HG00408#hap1",
+          "status": "pass",
+          "on_target": [
+            280
+          ],
+          "off_target": [],
+          "size_flag": false,
+          "reason": "single on-target product 280 bp",
+          "site_cap": null
+        }
+      ]
+    },
+    {
+      "primer_id": "CYP2D6_paralog",
+      "forward": "GCGTGGGGGAAGATGGTTTA",
+      "reverse": "CAGGGACCCATCCTCAAACC",
+      "target_input": "chr22:42593818-42594100",
+      "target_chm13": "chr22:42593818-42594100",
+      "expected_size": 282,
+      "cells": [
+        {
+          "haplotype_id": "HG01884#hap1",
+          "status": "multi_product",
+          "on_target": [
+            282
+          ],
+          "off_target": [
+            279,
+            282,
+            282,
+            285,
+            596
+          ],
+          "size_flag": false,
+          "reason": "6 products (1 on-target)",
+          "site_cap": null
+        },
+        {
+          "haplotype_id": "HG00097#hap1",
+          "status": "multi_product",
+          "on_target": [
+            282
+          ],
+          "off_target": [
+            279,
+            282,
+            282,
+            285,
+            597
+          ],
+          "size_flag": false,
+          "reason": "6 products (1 on-target)",
+          "site_cap": null
+        },
+        {
+          "haplotype_id": "HG00408#hap1",
+          "status": "multi_product",
+          "on_target": [
+            282
+          ],
+          "off_target": [
+            279,
+            282,
+            282,
+            285,
+            597
+          ],
+          "size_flag": false,
+          "reason": "6 products (1 on-target)",
+          "site_cap": null
+        }
+      ]
+    },
+    {
+      "primer_id": "CYP2D6_dropout",
+      "forward": "CCAAGTTGCGCAAGGTGGAG",
+      "reverse": "TGTGACCAGCTGGACAGAGC",
+      "target_input": "chr22:42608601-42608798",
+      "target_chm13": "chr22:42608601-42608798",
+      "expected_size": 197,
+      "cells": [
+        {
+          "haplotype_id": "HG01884#hap1",
+          "status": "pass",
+          "on_target": [
+            197
+          ],
+          "off_target": [],
+          "size_flag": false,
+          "reason": "single on-target product 197 bp",
+          "site_cap": null
+        },
+        {
+          "haplotype_id": "HG00097#hap1",
+          "status": "dropout",
+          "on_target": [],
+          "off_target": [],
+          "size_flag": false,
+          "reason": "CCAAGTTGCGCAAGGTGGAG@HG00097#1#CM094060.1:52463345 annealing Tm 45.5C < 57.1C; CCAAGTTGCGCAAGGTGGAG@HG00097#1#CM094060.1:169466471 annealing Tm 47.3C < 57.1C; CCAAGTTGCGCAAGGTGGAG@HG00097#1#CM094060.1:204099758 annealing Tm 48.6C < 57.1C",
+          "site_cap": null
+        },
+        {
+          "haplotype_id": "HG00408#hap1",
+          "status": "pass",
+          "on_target": [
+            197
+          ],
+          "off_target": [],
+          "size_flag": false,
+          "reason": "single on-target product 197 bp",
+          "site_cap": null
+        }
+      ]
+    }
+  ]
+}

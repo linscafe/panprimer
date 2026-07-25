@@ -31,6 +31,13 @@ class EvalConfig:
     max_mismatches: int = 3  # search budget (competence is decided separately)
     min_product: int = 100
     max_product: int = 300
+    #: Cap on amplification-competent binding sites per primer. Above it, scanning stops
+    #: and the haplotype is reported as ">N binding sites" rather than enumerating
+    #: products. Guards against repeat-derived primers (an Alu 20-mer has ~106k competent
+    #: sites). `None` or 0 disables the cap. See `_filter_competent`.
+    #: Default 100: measured competent-site counts for well-behaved primers top out at 28,
+    #: so 100 clears them comfortably while sitting ~3 orders of magnitude below a repeat.
+    max_binding_sites: int | None = 100
     rule_cfg: RuleConfig = None  # type: ignore[assignment]
     thermo_cfg: ThermoConfig = None  # type: ignore[assignment]
 
@@ -46,11 +53,21 @@ def _filter_competent(
     sites: list[BindingSite],
     window_fn,
     cfg: EvalConfig,
-) -> tuple[list[BindingSite], list[str]]:
+) -> tuple[list[BindingSite], list[str], bool]:
     """Keep amplification-competent sites; collect reasons for the rest. `window_fn(chrom,
-    start, end) -> str` yields the top-strand reference the primer matched (for thermo)."""
+    start, end) -> str` yields the top-strand reference the primer matched (for thermo).
+
+    Returns `(kept, reasons, capped)`. `capped` is True when the primer exceeded
+    `cfg.max_binding_sites` competent sites, at which point scanning STOPS: a primer that
+    binds that many places is promiscuous regardless of what the remaining sites say, and
+    scoring them is pure cost. The demo's Alu primer has ~330k raw sites (~106k competent);
+    thermodynamically scoring every one of them is what made a verify run take 25 min.
+    Once capped, `kept` holds exactly `max_binding_sites` sites and the true total is
+    reported only as "more than the cap" -- deliberately, since we stopped counting.
+    """
     kept: list[BindingSite] = []
     reasons: list[str] = []
+    limit = cfg.max_binding_sites
     for s in sites:
         template_window = window_fn(s.chrom, s.start, s.end).upper()
         ok, why = classify.is_competent(
@@ -63,9 +80,11 @@ def _filter_competent(
         )
         if ok:
             kept.append(s)
+            if limit is not None and limit > 0 and len(kept) > limit:
+                return kept[:limit], reasons, True
         else:
             reasons.append(f"{s.primer_name}@{s.chrom}:{s.start} {why}")
-    return kept, reasons
+    return kept, reasons, False
 
 
 def evaluate_with_sites(
@@ -86,8 +105,28 @@ def evaluate_with_sites(
             [],
             reason="locus not reliably projected onto this haplotype",
         )
-    f_kept, f_reasons = _filter_competent(pair.forward.sequence, f_sites, window_fn, cfg)
-    r_kept, r_reasons = _filter_competent(pair.reverse.sequence, r_sites, window_fn, cfg)
+    f_kept, f_reasons, f_capped = _filter_competent(
+        pair.forward.sequence, f_sites, window_fn, cfg
+    )
+    r_kept, r_reasons, r_capped = _filter_competent(
+        pair.reverse.sequence, r_sites, window_fn, cfg
+    )
+    if f_capped or r_capped:
+        # A primer binding this many places amplifies indiscriminately; enumerating the
+        # resulting product sizes would be a wall of noise, not a result. Report the fact
+        # instead. `which` names the offending primer(s) so the cause is actionable.
+        which = " and ".join(
+            n for n, c in (("forward", f_capped), ("reverse", r_capped)) if c
+        )
+        return HaplotypeResult(
+            haplotype_id,
+            HaplotypeStatus.MULTI_PRODUCT,
+            [],
+            reason=(
+                f">{cfg.max_binding_sites} binding sites "
+                f"({which} primer); likely repeat-derived"
+            ),
+        )
     amplicons = pcr.pair_amplicons(
         f_kept + r_kept, expected_locus, cfg.min_product, cfg.max_product
     )

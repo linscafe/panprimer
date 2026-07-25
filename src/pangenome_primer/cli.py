@@ -105,18 +105,19 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
     off-target search only on the top-K coverage candidates."""
     import pysam
 
-    from .bwa_backend import find_binding_sites_batch
     from .design import design_candidates
     from .engine import HaplotypeContext, evaluate_pair
     from .mask import build_excluded_regions
     from .model import Locus
     from .project import AmbiguousAnchor, project_target, resolve_target
+    from .search import backend_from_config, find_binding_sites_batch
 
     raw = cfgmod.load_raw(config_path)
     mode = mode or raw["dropout"]["mode"]
     dcfg = cfgmod.design_config(raw)
     flank = raw["design"]["flank"]
     max_mm = raw["search"]["max_mismatches"]
+    backend = backend_from_config(raw, warn=lambda m: click.echo(f"  warning: {m}"))
 
     # 1) resolve target to a CHM13 (chrom, start, end) + template sequence with flank
     try:
@@ -197,8 +198,12 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
 
     def _sites(fasta, hid):
         if hid not in site_cache:
-            click.echo(f"    stage B: genome-wide search on {hid} ...")
-            site_cache[hid] = find_binding_sites_batch(short_seqs, fasta, hid, max_mm)
+            click.echo(f"    stage B: genome-wide search ({backend}) on {hid} ...")
+            try:
+                site_cache[hid] = find_binding_sites_batch(
+                    short_seqs, fasta, hid, max_mm, backend=backend)
+            except FileNotFoundError as e:
+                raise click.ClickException(str(e))
         return site_cache[hid]
 
     results: list[PairResult] = []
@@ -384,13 +389,14 @@ def evaluate_cmd(candidates_json, proj_json, hap_fasta, config_path, mode, out) 
     """Stage 5: evaluate all candidate pairs against one haplotype (genome-wide bwa)."""
     import pysam
 
-    from .bwa_backend import find_binding_sites_batch
+    from .search import backend_from_config, find_binding_sites_batch
     from .serialize import candidate_from_dict, locus_from_dict, result_to_dict
 
     raw = cfgmod.load_raw(config_path)
     mode = mode or raw["dropout"]["mode"]
     dcfg = cfgmod.design_config(raw)
     max_mm = raw["search"]["max_mismatches"]
+    backend = backend_from_config(raw, warn=lambda m: click.echo(f"  warning: {m}"))
     cands = [candidate_from_dict(d) for d in json.loads(Path(candidates_json).read_text())["candidates"]]
     proj = json.loads(Path(proj_json).read_text())
     hid = proj["hap_id"]
@@ -404,9 +410,13 @@ def evaluate_cmd(candidates_json, proj_json, hap_fasta, config_path, mode, out) 
                                     EvalConfig(mode=mode))
             per_pair[c.pair.name] = result_to_dict(r)
     else:
-        # one genome-wide bwa search for ALL primers on this haplotype (index loaded once)
+        # one genome-wide search for ALL primers on this haplotype (one pass over the assembly)
         all_seqs = [c.pair.forward.sequence for c in cands] + [c.pair.reverse.sequence for c in cands]
-        sites_by_seq = find_binding_sites_batch(all_seqs, fasta, hid, max_mm)
+        try:
+            sites_by_seq = find_binding_sites_batch(
+                all_seqs, fasta, hid, max_mm, backend=backend)
+        except FileNotFoundError as e:
+            raise click.ClickException(str(e))
         fa = pysam.FastaFile(fasta)
         for c in cands:
             design_tm = _pair_tm(c.pair.forward.sequence, c.pair.reverse.sequence, dcfg.tm_opt)

@@ -1,6 +1,9 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+# maturin, not setuptools: the package now ships a compiled Rust extension
+# (`pangenome_primer._scan`, source in rust/pgp-scan) alongside the pure-Python modules.
+# The Python side is unchanged -- see [tool.maturin] below for the mixed layout.
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
 
 [project]
 name = "pangenome-primer"
@@ -22,8 +25,16 @@ dev = ["pytest>=8.0"]
 [project.scripts]
 pangenome-primer = "pangenome_primer.cli:cli"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.maturin]
+# Mixed Rust/Python project: Python package under src/, Rust crate under rust/pgp-scan.
+python-source = "src"
+manifest-path = "rust/pgp-scan/Cargo.toml"
+module-name = "pangenome_primer._scan"
+features = ["pyo3/extension-module"]
+# The extension is OPTIONAL at import time (see pangenome_primer/rust_backend.py): a wheel
+# built for another platform, or an install where the Rust toolchain is missing, degrades
+# to the `bwa` backend instead of failing. `search.backend` in config/defaults.yaml is the
+# selector.
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

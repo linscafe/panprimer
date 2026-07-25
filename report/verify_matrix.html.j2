@@ -21,6 +21,8 @@
   .dev { text-decoration: underline dotted var(--dev); }
   .drop { color: var(--muted); font-style: italic; }
   .unc { color: var(--muted); }
+  /* repeat-derived primer: distinct from both a size and a dropout, so neither colour */
+  .cap { color: var(--off); font-weight: 600; font-size: 11px; white-space: nowrap; }
   .sep { color: var(--muted); }
   code { font-size: 0.8rem; } .muted { color: var(--muted); font-size: 0.8rem; }
   .legend span { margin-right: 1rem; }
@@ -32,6 +34,7 @@
   <span class="ok">correct amplicon size</span>
   <span class="off">off-target size</span>
   <span class="drop">dropout</span> (no correct product)
+  <span class="cap">&gt;N binding sites</span> = repeat-derived primer
   <span class="unc">?</span> = locus not projectable
   <span class="dev">underlined</span> = size differs from expected
 </p>
@@ -57,6 +60,10 @@
       {% set c = cellmap[h] %}
       <td title="{{ c.reason }}">
         {% if c.status == 'uncertain' %}<span class="unc">?</span>
+        {# The cap must be tested BEFORE the empty-product branch: a capped cell has no
+           enumerated products, so it would otherwise render as "dropout" -- the precise
+           mislabel (a promiscuous primer read as a failure to amplify) this guards. #}
+        {% elif c.site_cap %}<span class="cap">&gt;{{ c.site_cap }} binding sites</span>
         {% elif not c.on_target and not c.off_target %}<span class="drop">dropout</span>
         {% else %}
           {%- for s in c.on_target %}<span class="ok {{ 'dev' if c.size_flag }}">{{ s }}</span>{% if not loop.last %}<span class="sep">,</span>{% endif %}{% endfor -%}

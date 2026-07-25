@@ -1,0 +1,312 @@
+{
+  "provenance": {
+    "reference_build": "CHM13v2.0",
+    "target": "chr12:6544868-6548730",
+    "dropout_mode": "thermo",
+    "n_haplotypes": 3,
+    "candidates": 20,
+    "specificity_checked": 5
+  },
+  "pairs": [
+    {
+      "name": "chr12_6544868_pair0",
+      "forward": "CGCTTCATGCTGCACATCTC",
+      "reverse": "TTCAGTAATGGCTGCCTGGG",
+      "product_size_chm13": 201,
+      "passed": true,
+      "reject_reasons": [],
+      "on_target_coverage": 1.0,
+      "unique_product_rate": 1.0,
+      "n_evaluable": 3,
+      "n_uncertain": 0,
+      "n_dropout": 0,
+      "n_off_target": 0,
+      "n_multi_product": 0,
+      "primer3_penalty": 0.061902523353694505,
+      "per_haplotype": [
+        {
+          "haplotype_id": "HG01884#hap1",
+          "status": "pass",
+          "reason": "single on-target product 201 bp",
+          "amplicons": [
+            {
+              "chrom": "HG01884#1#CM086411.1",
+              "start": 6559642,
+              "end": 6559843,
+              "size": 201,
+              "on_target": true
+            }
+          ]
+        },
+        {
+          "haplotype_id": "HG00097#hap1",
+          "status": "pass",
+          "reason": "single on-target product 201 bp",
+          "amplicons": [
+            {
+              "chrom": "HG00097#1#CM094068.1",
+              "start": 6564452,
+              "end": 6564653,
+              "size": 201,
+              "on_target": true
+            }
+          ]
+        },
+        {
+          "haplotype_id": "HG00408#hap1",
+          "status": "pass",
+          "reason": "single on-target product 201 bp",
+          "amplicons": [
+            {
+              "chrom": "HG00408#1#CM085960.1",
+              "start": 6566826,
+              "end": 6567027,
+              "size": 201,
+              "on_target": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chr12_6544868_pair1",
+      "forward": "ATCCCCTGCACTCCACCTAT",
+      "reverse": "TGAGAAGGCTCCATACCGGA",
+      "product_size_chm13": 120,
+      "passed": true,
+      "reject_reasons": [],
+      "on_target_coverage": 1.0,
+      "unique_product_rate": 1.0,
+      "n_evaluable": 3,
+      "n_uncertain": 0,
+      "n_dropout": 0,
+      "n_off_target": 0,
+      "n_multi_product": 0,
+      "primer3_penalty": 0.062196130423558316,
+      "per_haplotype": [
+        {
+          "haplotype_id": "HG01884#hap1",
+          "status": "pass",
+          "reason": "single on-target product 120 bp",
+          "amplicons": [
+            {
+              "chrom": "HG01884#1#CM086411.1",
+              "start": 6548528,
+              "end": 6548648,
+              "size": 120,
+              "on_target": true
+            }
+          ]
+        },
+        {
+          "haplotype_id": "HG00097#hap1",
+          "status": "pass",
+          "reason": "single on-target product 120 bp",
+          "amplicons": [
+            {
+              "chrom": "HG00097#1#CM094068.1",
+              "start": 6553339,
+              "end": 6553459,
+              "size": 120,
+              "on_target": true
+            }
+          ]
+        },
+        {
+          "haplotype_id": "HG00408#hap1",
+          "status": "pass",
+          "reason": "single on-target product 120 bp",
+          "amplicons": [
+            {
+              "chrom": "HG00408#1#CM085960.1",
+              "start": 6555712,
+              "end": 6555832,
+              "size": 120,
+              "on_target": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chr12_6544868_pair2",
+      "forward": "CGCACAAAACCCGCAGTTAA",
+      "reverse": "GCAGGGAGACTAGAATCCGC",
+      "product_size_chm13": 137,
+      "passed": true,
+      "reject_reasons": [],
+      "on_target_coverage": 1.0,
+      "unique_product_rate": 1.0,
+      "n_evaluable": 3,
+      "n_uncertain": 0,
+      "n_dropout": 0,
+      "n_off_target": 0,
+      "n_multi_product": 0,
+      "primer3_penalty": 0.0623814201731534,
+      "per_haplotype": [
+        {
+          "haplotype_id": "HG01884#hap1",
+          "status": "pass",
+          "reason": "single on-target product 137 bp",
+          "amplicons": [
+            {
+              "chrom": "HG01884#1#CM086411.1",
+              "start": 6573047,
+              "end": 6573184,
+              "size": 137,
+              "on_target": true
+            }
+          ]
+        },
+        {
+          "haplotype_id": "HG00097#hap1",
+          "status": "pass",
+          "reason": "single on-target product 137 bp",
+          "amplicons": [
+            {
+              "chrom": "HG00097#1#CM094068.1",
+              "start": 6577857,
+              "end": 6577994,
+              "size": 137,
+              "on_target": true
+            }
+          ]
+        },
+        {
+          "haplotype_id": "HG00408#hap1",
+          "status": "pass",
+          "reason": "single on-target product 137 bp",
+          "amplicons": [
+            {
+              "chrom": "HG00408#1#CM085960.1",
+              "start": 6580231,
+              "end": 6580368,
+              "size": 137,
+              "on_target": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chr12_6544868_pair3",
+      "forward": "CGCACAAAACCCGCAGTTAA",
+      "reverse": "GATTGGGAAAGGGGGACAGG",
+      "product_size_chm13": 278,
+      "passed": true,
+      "reject_reasons": [],
+      "on_target_coverage": 1.0,
+      "unique_product_rate": 1.0,
+      "n_evaluable": 3,
+      "n_uncertain": 0,
+      "n_dropout": 0,
+      "n_off_target": 0,
+      "n_multi_product": 0,
+      "primer3_penalty": 0.06267591121320493,
+      "per_haplotype": [
+        {
+          "haplotype_id": "HG01884#hap1",
+          "status": "pass",
+          "reason": "single on-target product 278 bp",
+          "amplicons": [
+            {
+              "chrom": "HG01884#1#CM086411.1",
+              "start": 6573047,
+              "end": 6573325,
+              "size": 278,
+              "on_target": true
+            }
+          ]
+        },
+        {
+          "haplotype_id": "HG00097#hap1",
+          "status": "pass",
+          "reason": "single on-target product 278 bp",
+          "amplicons": [
+            {
+              "chrom": "HG00097#1#CM094068.1",
+              "start": 6577857,
+              "end": 6578135,
+              "size": 278,
+              "on_target": true
+            }
+          ]
+        },
+        {
+          "haplotype_id": "HG00408#hap1",
+          "status": "pass",
+          "reason": "single on-target product 278 bp",
+          "amplicons": [
+            {
+              "chrom": "HG00408#1#CM085960.1",
+              "start": 6580231,
+              "end": 6580509,
+              "size": 278,
+              "on_target": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chr12_6544868_pair4",
+      "forward": "CGCACAAAACCCGCAGTTAA",
+      "reverse": "GGATTGGGAAAGGGGGACAG",
+      "product_size_chm13": 279,
+      "passed": true,
+      "reject_reasons": [],
+      "on_target_coverage": 1.0,
+      "unique_product_rate": 1.0,
+      "n_evaluable": 3,
+      "n_uncertain": 0,
+      "n_dropout": 0,
+      "n_off_target": 0,
+      "n_multi_product": 0,
+      "primer3_penalty": 0.06267591121320493,
+      "per_haplotype": [
+        {
+          "haplotype_id": "HG01884#hap1",
+          "status": "pass",
+          "reason": "single on-target product 279 bp",
+          "amplicons": [
+            {
+              "chrom": "HG01884#1#CM086411.1",
+              "start": 6573047,
+              "end": 6573326,
+              "size": 279,
+              "on_target": true
+            }
+          ]
+        },
+        {
+          "haplotype_id": "HG00097#hap1",
+          "status": "pass",
+          "reason": "single on-target product 279 bp",
+          "amplicons": [
+            {
+              "chrom": "HG00097#1#CM094068.1",
+              "start": 6577857,
+              "end": 6578136,
+              "size": 279,
+              "on_target": true
+            }
+          ]
+        },
+        {
+          "haplotype_id": "HG00408#hap1",
+          "status": "pass",
+          "reason": "single on-target product 279 bp",
+          "amplicons": [
+            {
+              "chrom": "HG00408#1#CM085960.1",
+              "start": 6580231,
+              "end": 6580510,
+              "size": 279,
+              "on_target": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

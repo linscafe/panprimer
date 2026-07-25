@@ -22,7 +22,21 @@ mask:
   max_regions: 200           # cap on masked intervals (Primer3 SEQUENCE_EXCLUDED_REGION max)
 
 search:
-  backend: bwa               # RESERVED (not yet wired): engine auto-selects bwa (real) / naive (tiny)
+  backend: rust              # genome-wide search engine. rust = compiled streaming scanner
+                             # over the BGZF .fa.gz (no index on disk); bwa = legacy
+                             # `bwa aln` over the per-haplotype bwa index; naive = pure
+                             # Python, small references only; auto = same chain as rust.
+                             # rust/auto fall back to bwa (with a warning) where the
+                             # compiled extension isn't installed. See search.py.
+  max_binding_sites: 100     # cap on amplification-competent binding sites per primer.
+                             # Above it, scanning stops and the cell reads ">100 binding
+                             # sites" instead of enumerating products -- a primer binding
+                             # that many places (e.g. an Alu repeat 20-mer, ~106k competent
+                             # sites) amplifies indiscriminately. 0 or null disables.
+                             # Chosen from measured separation: normal demo primers top out
+                             # at 28 competent sites (CYP2D6_paralog reverse) while the Alu
+                             # primer has ~106k, so 100 catches repeats with no false
+                             # positives. Values <=28 would suppress the CYP2D7 paralog row.
   max_mismatches: 3          # search budget: report sites with up to this many mismatches;
                              # actual bind-vs-dropout is decided by the `dropout` model below
 

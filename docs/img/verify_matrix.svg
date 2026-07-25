@@ -27,10 +27,10 @@
 <text x="517.4" y="192.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1a7f37">282</tspan><tspan xml:space="preserve" fill="#1f2328">  </tspan><tspan xml:space="preserve" fill="#cf222e">off:279,282,282,285,597</tspan></text>
 <text x="759.8" y="192.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1a7f37">282</tspan><tspan xml:space="preserve" fill="#1f2328">  </tspan><tspan xml:space="preserve" fill="#cf222e">off:279,282,282,285,597</tspan></text>
 <text x="32.0" y="222.0" font-size="13" font-weight="700"><tspan xml:space="preserve" fill="#1f2328">CYP2D6_dropout</tspan></text>
-<text x="165.2" y="222.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1f2328">122</tspan></text>
-<text x="275.0" y="222.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#6e7781" font-style="italic">dropout</tspan></text>
+<text x="165.2" y="222.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1f2328">197</tspan></text>
+<text x="275.0" y="222.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1a7f37">197</tspan></text>
 <text x="517.4" y="222.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#6e7781" font-style="italic">dropout</tspan></text>
-<text x="759.8" y="222.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#6e7781" font-style="italic">dropout</tspan></text>
+<text x="759.8" y="222.0" font-size="13" font-weight="400"><tspan xml:space="preserve" fill="#1a7f37">197</tspan></text>
 <line x1="20.0" y1="78.0" x2="20.0" y2="232.0" stroke="#d0d7de"/>
 <line x1="153.2" y1="78.0" x2="153.2" y2="232.0" stroke="#d0d7de"/>
 <line x1="263.0" y1="78.0" x2="263.0" y2="232.0" stroke="#d0d7de"/>
