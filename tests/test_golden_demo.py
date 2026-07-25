@@ -269,15 +269,50 @@ def test_frozen_golden_matches_live_demo_output_if_present():
 # =========================================================================================
 
 
-def _hprc_data_present() -> bool:
-    chm13 = REPO_ROOT / "hprc-r2" / "references" / "chm13v2.0.fa"
-    assemblies = REPO_ROOT / "hprc-r2" / "assemblies"
-    if not chm13.exists():
+def _hprc_data_present(manifest: str) -> bool:
+    """True when `manifest`'s haplotypes and CHM13 are all on disk.
+
+    Resolved through `load_haplotypes` against the manifest the test actually passes to the
+    CLI, rather than probing a hardcoded filename. A previous version checked for
+    `<sample>.fa`; when Phase 3 repointed the manifests at the BGZF `.fa.gz` and deleted the
+    uncompressed copies, that check went false and **both slow gates silently skipped** —
+    the whole suite reported green in 0.03 s. A guard that hardcodes a path the pipeline no
+    longer uses does not protect the test, it disables it.
+    """
+    from pangenome_primer.samples import load_haplotypes
+
+    if not (REPO_ROOT / "hprc-r2" / "references" / "chm13v2.0.fa").exists():
         return False
-    for sample in ("HG01884_hap1", "HG00097_hap1", "HG00408_hap1"):
-        if not (assemblies / f"{sample}.fa").exists():
-            return False
-    return True
+    try:
+        return bool(load_haplotypes(str(REPO_ROOT / manifest)))
+    except (FileNotFoundError, OSError):
+        return False
+
+
+@pytest.mark.parametrize(
+    "manifest", ["demo-verify-pipeline/samples.tsv", "demo-design-pipeline/samples.tsv"]
+)
+def test_slow_gate_is_not_silently_disabled(manifest):
+    """If the genome data is on disk, the slow gates must actually run.
+
+    This is the watchdog for the skip guard itself. `_hprc_data_present` once probed a
+    hardcoded `<sample>.fa`; when the manifests were repointed at `.fa.gz` and the
+    uncompressed copies deleted, it started returning False and both slow gates skipped
+    while the suite still reported green. Nothing else in the suite could notice, because a
+    skipped test looks exactly like a passing one in the summary line.
+
+    Deliberately keyed on the presence of *any* haplotype file rather than on the guard's
+    own logic, so it fails when the two disagree instead of restating the guard.
+    """
+    have_data = any((REPO_ROOT / "hprc-r2" / "assemblies").glob("*.fa*")) and (
+        REPO_ROOT / "hprc-r2" / "references" / "chm13v2.0.fa"
+    ).exists()
+    if not have_data:
+        pytest.skip("no hprc-r2/ genome data on this machine at all")
+    assert _hprc_data_present(manifest), (
+        f"genome data is present but the slow-gate guard reports it missing for {manifest}. "
+        f"The slow gates are being skipped, so the golden matrices are NOT being verified."
+    )
 
 
 @pytest.mark.slow
@@ -286,7 +321,7 @@ def test_verify_pipeline_reproduces_golden_verify_matrix(tmp_path):
     across 3 real HPRC haplotypes) and diffs it against tests/golden/verify.json cell for
     cell, including the CYP2D7-off-target and engineered-dropout rows. ~minutes; needs
     real genome data under hprc-r2/."""
-    if not _hprc_data_present():
+    if not _hprc_data_present("demo-verify-pipeline/samples.tsv"):
         pytest.skip("hprc-r2/ genome data not present; see README 'Get the data'")
     if shutil.which("pangenome-primer") is None:
         pytest.skip("'pangenome-primer' console script not on PATH (pip install -e .)")
@@ -313,7 +348,7 @@ def test_design_pipeline_reproduces_golden_results(tmp_path):
     """Regenerates results.json from scratch (design + evaluate + rank for GAPDH across 3
     real HPRC haplotypes) and diffs it against tests/golden/results.json cell for cell.
     ~minutes; needs real genome data under hprc-r2/."""
-    if not _hprc_data_present():
+    if not _hprc_data_present("demo-design-pipeline/samples.tsv"):
         pytest.skip("hprc-r2/ genome data not present; see README 'Get the data'")
     if shutil.which("pangenome-primer") is None:
         pytest.skip("'pangenome-primer' console script not on PATH (pip install -e .)")

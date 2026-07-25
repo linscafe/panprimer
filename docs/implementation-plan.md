@@ -240,7 +240,30 @@ Verified prerequisite: the HPRC-distributed `.fa.gz` is **already BGZF** (`BC` s
 
 **Scope: 3 haplotypes.** All three manifests (`config/samples.tsv`, `demo-verify-pipeline/`, `demo-design-pipeline/`) are pinned to HG01884#hap1 / HG00097#hap1 / HG00408#hap1 — AFR/EUR/EAS. `config/samples.tsv` previously listed 10; it was trimmed because `nextflow.config` defaults `--samples` to it, so a bare `nextflow run main.nf` would otherwise fan out across every assembly on disk. The CLI's `--samples` is `required=True`, so it never had this exposure. The 7 unlisted haplotypes remain on disk untouched; git history and `pangenome-primer fetch-subset` both restore the wider manifest.
 
-**Inventory (2026-07-25):** all 10 `.fa.gz` verified BGZF by magic-byte check. Only `HG00097_hap1` has a `.gzi`; 6 of 10 have `.fa.gz.fai`; 6 of 10 have `.mmi`; no haplotype has a `.chm13.paf`.
+### Phase 3 gate: passed, and the reclaim is done
+
+`pytest --runslow tests/test_golden_demo.py` — **14 passed in 31m36s** reading entirely from `.fa.gz`, against 33m07s from the uncompressed `.fa`. Fast suite 131 passed. A single-haplotype smoke run completed in 4m25s with the expected verdicts (`CYP2D6_paralog` off-target present, `CYP2D6_dropout` clean on the AFR haplotype — that dropout is EUR-specific).
+
+**Reclaimed 95.45 GB across 72 files.** `hprc-r2/assemblies/` went 114 GB → 25 GB; free disk 589 GB → 679 GB.
+
+| | deleted | kept |
+|---|---|---|
+| 3 manifest haplotypes | `.fa`, `.fa.fai`, `.amb`, `.ann`, `.bwt`, `.pac`, `.sa` | `.fa.gz`, `.fa.gz.fai`, `.fa.gz.gzi`, **`.fa.mmi`** |
+| 7 unreferenced haplotypes | the above **plus `.fa.mmi`** | `.fa.gz`, `.fa.gz.fai`, `.fa.gz.gzi` |
+
+The deletion ran behind a guard that refused to touch any haplotype whose `.fa.gz` + `.fai` + `.gzi` replacement triple was not present and non-empty; all 10 passed. The `.mmi` is retained for the 3 manifest haplotypes because projection has no replacement until Phase 4.
+
+**Cost to undo:** ~2 min `gunzip` per haplotype, plus ~55 min `bwa index` if `search.backend: bwa` is ever needed again (`WITH_BWA=1 bash scripts/prepare_haplotypes.sh`). Nothing else regresses — the `.fa` was pure duplication of the BGZF.
+
+#### The reclaim nearly hid itself
+
+The first post-reclaim gate reported **12 passed, 2 skipped in 0.03 s** and exited 0. Both slow gates had skipped: `_hprc_data_present()` probed a hardcoded `hprc-r2/assemblies/<sample>.fa`, and the reclaim had just deleted every one of those. Deleting the data the gate depends on turned the gate off, and the suite reported success — a green tick that meant *nothing was checked*.
+
+This is the third instance of the same pattern in this work, after the golden fixture that had never been reproduced and `bwa`'s silently-omitted `XA` tag: **the failure was always silence, never an error.** The guard is now derived from the manifest the test actually hands the CLI (`load_haplotypes`), so it tracks any future repoint automatically, and `test_slow_gate_is_not_silently_disabled` asserts that whenever genome data exists on disk the guard agrees — keyed on file presence rather than on the guard's own logic, so it fails when the two disagree instead of restating one of them.
+
+Worth noting for later phases: a skipped test and a passing test are indistinguishable in pytest's summary line. Any phase that deletes or moves data should re-read the skip reasons (`-rs`), not just the exit code.
+
+**Inventory (2026-07-25, pre-reclaim):** all 10 `.fa.gz` verified BGZF by magic-byte check. Only `HG00097_hap1` has a `.gzi`; 6 of 10 have `.fa.gz.fai`; 6 of 10 have `.mmi`; no haplotype has a `.chm13.paf`.
 
 ---
 
