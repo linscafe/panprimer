@@ -320,33 +320,112 @@ The anchored fraction is strikingly consistent (91.7–92.2%), and the ~8% that 
 
 ---
 
+## Phase 4.5 — BLOCKER: intermittent segfault in the search backend
+
+**Model: Opus.** Memory-safety debugging across the PyO3/rayon boundary.
+
+Found 2026-07-25 while profiling for the Phase 5/6 review. `pangenome_primer._scan` segfaulted during repeated `find_binding_sites_batch` calls in one process. **Full evidence, diagnosis and fix directions: [`docs/issues.md` ISSUE-001](issues.md).** In brief:
+
+- **Established** from `dmesg`: the faulting address equals the stack pointer and the instruction bytes are LLVM's stack-probe loop on a non-main thread — a **stack overflow on a rayon worker**, not heap corruption or a data race.
+- **Not established:** which frame. The hypothesis is flate2's ~52 KB inflate state accumulating under rayon's work-stealing, but the faulting `ip` has not been attributed to a symbol.
+- **Not reproducible on demand.** It survived 8 consecutive repeat calls, 3 re-runs, per-input isolation, and every gate to date. Treat "it ran fine" as no evidence at all.
+
+**Why it outranks Phases 5 and 6.** `verify` issues one scan call per haplotype in a single process. Three calls is the exposure actually exercised; a 464-haplotype run is 150× that, and the crash would land after hours with no partial output. A defect that is rare at demo scale is not rare at production scale — it is untested there.
+
+**Gate:** faulting `ip` attributed to a symbol; the triggering profile script run **50×** without a crash (one clean run proves nothing); conformance and differential suites unchanged.
+
+---
+
 ## Phase 5 — CHM13-once candidate discovery
 
 **Model: Opus.** The core algorithmic insight and its correctness envelope.
 
-Off-target amplification requires both primers binding within ~2 kb pointing at each other, so candidate loci are by construction homologous to the target. Therefore: search CHM13 **once per run** (~47 s, amortized across every haplotype instead of paid per haplotype), lift each candidate locus through the Phase 4 anchor grid, and fetch only those windows (~2.6 µs each).
+Off-target amplification requires both primers binding within ~2 kb pointing at each other, so candidate loci are by construction homologous to the target. Therefore: search CHM13 **once per run**, lift each candidate locus through the Phase 4 anchor grid, and fetch only those windows.
 
 The many-to-one lift is a feature: a haplotype carrying three CYP2D7-like copies that all align to one CHM13 locus is recovered naturally — the case the README leads with.
 
-**Correctness envelope.** Haplotype-private sequence absent from CHM13 is unreachable this way. Report it as the existing **`uncertain`** status, which `intro_verify_pipeline.md` §5 already argues must stay distinct from `dropout`. Phase 2's scanner remains available as the exact genome-wide path, so Phase 5's approximation is validated against it — not merely asserted.
+### The original justification no longer holds; a different one does
 
-**Gate:** on ≥5 haplotypes, Phase 5 output differs from Phase 2's exact scan **only** in loci the anchor grid marks unanchored. Any other difference is a bug. Target <1 s/haplotype.
+The bullet above used to read "~47 s, amortized across every haplotype instead of paid per haplotype". **That 47.3 s was the bwa baseline.** Phase 2 replaced it with an exhaustive Rust scan at **6.0 s/haplotype**, so "amortize the expensive search" is no longer the argument.
+
+What rescues the phase is a different measurement (2026-07-25, HG00097_hap1, warm cache):
+
+| primers | 1 | 2 | 8 | 32 | 128 |
+|---|---:|---:|---:|---:|---:|
+| wall | 5.81 s | 5.83 s | 5.78 s | 5.80 s | 6.11 s |
+
+**Scan cost is flat in primer count.** The marginal cost of a primer is ~2 ms; the ~6 s is a fixed cost per *genome* — the traversal of 3.03 Gbp, not the comparisons. Two consequences:
+
+1. Scanning CHM13 once with *every* primer in the run is effectively free. Batch width is not a constraint.
+2. The saving from Phase 5 is the fixed ~6 s × (N−1) haplotypes, not anything primer-dependent.
+
+| haplotypes | exhaustive | CHM13-once | saved |
+|---:|---:|---:|---:|
+| 3 | ~18 s | ~6 s | ~12 s |
+| 20 | ~120 s | ~6 s | ~114 s |
+| 464 | ~46 min | ~6 s + lifts | ~46 min |
+
+### Recommendation: build it as a mode, not a replacement
+
+At N=3 on a 16 GB workstation, Phase 5 trades the exactness of an exhaustive scan for ~12 s. That is a bad trade. At N≥20 it is clearly the right one.
+
+So expose it as **`search.scope`**: `exhaustive` (default) and `chm13-once`. Same shape as `search.backend` — an existing, tested seam — and it keeps the exact path as the reference the approximation is validated against rather than a thing that was replaced.
+
+**Correctness envelope.** Haplotype-private sequence absent from CHM13 is unreachable this way. Report it as the existing **`uncertain`** status, which `intro_verify_pipeline.md` §5 already argues must stay distinct from `dropout`. Phase 4 measured that envelope: **~8% of each haplotype is unanchored** (91.7–92.2% anchored across three haplotypes), and its consistency means it can be planned around rather than rediscovered per sample.
+
+**Gate:** Phase 5 output differs from Phase 2's exact scan **only** in loci the anchor grid marks unanchored. Any other difference is a bug. Target <1 s/haplotype.
+
+> **Gate rescoped from ≥5 haplotypes to 3.** The working set is deliberately the 3 demo haplotypes. This costs less than it appears: the exhaustive scanner is now cheap enough (6 s/haplotype) to run as ground truth on every gate, so the comparison is *stronger* than when the ≥5 figure was written and bwa made the reference path expensive.
 
 ---
 
-## Phase 6 — Pangenome index spike, then commit
+## Phase 6 — Pangenome index spike → **recommend not running it**
 
 **Model: Opus** for evaluation and the eventual build; **Sonnet** for harness scaffolding.
 
-Time-boxed spike on ~20 haplotypes before committing to any rewrite. Candidates:
+The original plan: a time-boxed spike on ~20 haplotypes across Movi/r-index, `vg` GBZ + giraffe, and "Phases 1–5 only", committing only on evidence. That framing listed "no new index at all" as a valid documented outcome. **On the evidence now available, that is the outcome — take it without spending the spike.**
 
-| Candidate | Hypothesis | Main risk |
-|---|---|---|
-| Movi / r-index | Run-length BWT compresses with *distinct* sequence; 464 near-identical haplotypes in tens of GB | Younger toolchain; haplotype-attribution layer is yours to build |
-| `vg` GBZ + giraffe | Mature on HPRC; haplotype paths first-class, so attribution is free | Tuned for reads not 20-mers; graph→coordinate reporting is substantial |
-| Phases 1–5 only | No new index at all | Per-haplotype cost stays >0; unanchored fraction stays `uncertain` |
+### Why the premise expired
 
-**Measure:** total index size, build time, 20-mer query accuracy against Phase 2's exact scan as ground truth, and per-haplotype coordinate attribution fidelity. **Commit only on evidence.** If no candidate beats Phases 1–5 on the accuracy/effort trade, that is a valid and documented outcome.
+Phase 6 was scoped when search cost 47.3 s/haplotype at 4.45 GB peak and storage was 15 GB/haplotype. Both numbers drove the case for a compressed pangenome index. Neither survives:
+
+| | when Phase 6 was scoped | now |
+|---|---:|---:|
+| search | 47.3 s/hap, 4.45 GB peak | **6.0 s/hap, 418 MB peak** |
+| storage | 15.0 GB/hap | **0.91 GB/hap** |
+| projection | 5.80 GB index, 260.7 s load | **4.3 MB grid, no load** |
+
+The problem Phase 6 existed to solve has been solved by Phases 2–4, at a fraction of the architectural cost.
+
+### Why it is actively wrong for a 16 GB machine
+
+Both index candidates are **RAM-resident**: an r-index or a GBZ buys query speed by holding the pangenome in memory. The pipeline as built is the opposite shape — it *streams*, at **418 MB peak RSS**. Adopting either would invert the memory profile on a machine that cannot absorb it. `vg giraffe` at HPRC scale is a large-memory-server tool, and Movi's r-index makes the same RAM-for-speed trade.
+
+**The 20-haplotype spike would mislead rather than inform.** Twenty haplotypes might well fit in 16 GB and return an encouraging result that does not extrapolate to 464 — the only scale that matters. A spike that can only produce a false positive is worse than no spike.
+
+### What to do with the effort instead
+
+Ranked by value on a 16-core / 16 GB workstation:
+
+0. **Cap the rayon pool (ISSUE-002) before any server/cloud run.** Not a tuning knob — uncapped, a 256-core host running 64 concurrent haplotypes spawns ~16,384 threads and can be *slower* than the laptop. Measured: `threads × concurrent ≈ cores`, threads in the 2–4 range, is 19% faster than the default even on 16 cores.
+1. **Fix the Phase 4.5 segfault** — correctness before speed; see `docs/issues.md`.
+2. **Pipeline BGZF inflate against the scan.** Measured: the scan uses **738% of a possible 1600% CPU** — ~7.4 of 16 cores. The stages alternate (inflate a 32 MB read in parallel, then scan it in parallel), so cores idle in each other's phase. Overlapping them is plausibly ~2× on the dominant remaining cost, needs no extra RAM, and helps at every haplotype count. This is the single best performance item available and it shares a root with the segfault fix (de-nesting the two parallel regions).
+3. **Phase 5 as an opt-in mode**, for runs past ~20 haplotypes.
+4. **Close the ~8% unanchored fraction.** This is the real remaining accuracy gap and more interesting than any index swap — it is the sequence the tool currently cannot reason about at all.
+
+**Revisit Phase 6 only if** the target machine changes (a ≥64 GB node), or a use case appears that needs sub-second queries across all 464 haplotypes simultaneously — neither of which is the current workload.
+
+### Memory ceiling to respect
+
+Peak RSS across the pipeline, measured:
+
+| step | peak RSS |
+|---|---:|
+| genome-wide search (rust) | 418 MB |
+| projection via anchor grid | <100 MB |
+| **anchor-grid build (minimap2 + shared CHM13 index)** | **~8.3 GB** |
+
+The binding constraint on 16 GB is the one-time grid build, not the pipeline. It is comfortable today but leaves little room to raise `--threads`; `MM_THREADS` and minimap2's `-K` are the knobs if it ever needs trimming.
 
 ---
 
@@ -359,10 +438,13 @@ Time-boxed spike on ~20 haplotypes before committing to any rewrite. Candidates:
 | 2 — Rust matcher | **Opus** | Algorithmic correctness + FFI; highest risk | — (needs 0) |
 | 3 — BGZF storage | Sonnet (+Opus review of `main.nf`) | Mostly path plumbing; one risky line | — (needs 2) |
 | 4 — Anchor grid | **Opus** | Sampling-density and precision judgement | 3 |
-| 5 — CHM13-once | **Opus** | Core insight + correctness envelope | — (needs 4) |
-| 6 — Pangenome spike | **Opus** (Sonnet harness) | Open-ended evaluation, architectural commitment | — (needs 2 for ground truth) |
+| 4.5 — Segfault (ISSUE-001) | **Opus** | Memory-safety debugging across the PyO3/rayon boundary | — (blocks 5) |
+| 5 — CHM13-once | **Opus** | Core insight + correctness envelope | — (needs 4, 4.5) |
+| 6 — Pangenome spike | — | **Recommended not to run**; premise expired and the spike can only produce a false positive at 16 GB | — |
 
 Every phase brief must carry: the backend contract above, the relevant `file:line` seams, its gate, and the standing instruction **not to delete genome data**.
+
+**Status after Phase 4 (2026-07-25):** Phases 0–4 landed and gated. Phase 4.5 is the only blocker. Phase 5 is worth building as an opt-in mode but is not on the critical path for a 3-haplotype workload. Phase 6 is closed as "Phases 1–5 are sufficient" — the outcome its own charter listed as valid.
 
 ---
 
@@ -407,12 +489,14 @@ Record measured wall-time and peak RSS per haplotype at each gate against the ba
 
 | Risk | Mitigation |
 |---|---|
-| Rust matcher slower than estimated | Prototype against the 47.3 s baseline **before** anything is deleted; `naive`/`bwa` backends stay selectable |
+| ~~Rust matcher slower than estimated~~ | **Resolved:** 6.9 s vs the 47.3 s bwa baseline, at 418 MB vs 4.45 GB |
 | Wheel-less platform can't install | Pure-Python fallback via `search.backend`; degrade, never break |
-| `main.nf:116-124` staging breaks silently | `collectMany` skips missing globs quietly — assert staged file counts in a Nextflow smoke test |
-| Anchor grid less precise than `.mmi` | Local realignment on the fetched window recovers base-level precision; diff against `.mmi` output on demo loci |
-| Phase 5 misses haplotype-private loci | Report `uncertain`; validate against Phase 2's exact path on ≥5 haplotypes |
-| Phase 6 spike inconclusive | A documented "Phases 1–5 are sufficient" is an acceptable outcome |
+| ~~`main.nf` staging breaks silently~~ | **Resolved, and the stated mitigation was wrong:** `collectMany` does *not* skip missing globs — `files()` returns literal non-existent paths. Fixed with `findAll { it.exists() }`; caught by executing the closure against the real manifest |
+| ~~Anchor grid less precise than `.mmi`~~ | **Resolved:** 0 bp difference on all 5 demo loci, including the three CYP2D6 segdup targets |
+| **`_scan` segfault under repeated calls (ISSUE-001)** | Open blocker. Stack overflow on a rayon worker; intermittent, so absence of a crash is not evidence. See `docs/issues.md` |
+| **Uncapped rayon pool oversubscribes many-core hosts (ISSUE-002)** | Benign on the 16-core laptop *because* haplotypes run sequentially; becomes 64 × 256 = 16,384 threads the moment either changes. Must be fixed before any server/cloud run. See `docs/issues.md` |
+| Phase 5 misses haplotype-private loci | Report `uncertain`; validate against Phase 2's exact path on the 3-haplotype set, which the 6 s exhaustive scan now makes cheap to run every gate |
+| ~~Phase 6 spike inconclusive~~ | **Closed without running it:** the premise expired (search 47.3 s → 6.0 s, storage 15 GB → 0.91 GB) and a 20-haplotype spike on 16 GB could only produce a non-extrapolating false positive |
 
 ---
 
