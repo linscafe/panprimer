@@ -45,14 +45,17 @@ class AmbiguousAnchor(Exception):
 
 
 def _aligner(fasta: str, preset: str):
-    """Build a mappy aligner, preferring a prebuilt `<fasta>.mmi` if present. Building a
+    """Build a mappy aligner, preferring a prebuilt `.mmi` if present (resolved by
+    `samples.sidecar_path`, so a `.fa.gz` path finds the `.fa`-named index). Building a
     full-genome minimap2 index in-process costs minutes and several GB; a cached .mmi (see
     scripts/prepare_haplotypes.sh) loads in seconds at the same memory footprint."""
     import mappy
 
     from pathlib import Path
 
-    mmi = fasta + ".mmi"
+    from .samples import sidecar_path
+
+    mmi = sidecar_path(fasta, ".mmi")
     # require a non-empty index: a 0-byte/truncated .mmi (an interrupted `minimap2 -d`)
     # loads as an aligner that maps nothing, silently turning every projection uncertain.
     if Path(mmi).is_file() and Path(mmi).stat().st_size > 0:

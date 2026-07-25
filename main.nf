@@ -6,8 +6,10 @@ nextflow.enable.dsl = 2
 //          -> STAGE_A (coverage shortlist) -> EVALUATE (per hap, genome-wide on shortlist)
 //          -> AGGREGATE
 // Each process shells out to a `pangenome-primer` subcommand. Prebuilt per-haplotype caches
-// (.fai/.mmi/.chm13.paf for projection; bwa .amb/.ann/.bwt/.pac/.sa for the genome-wide
-// search) are staged alongside the FASTA so no index is rebuilt inside a work dir.
+// (.fai/.gzi for BGZF random access, .mmi/.chm13.paf for projection; bwa .amb/.ann/.bwt/
+// .pac/.sa only when running the legacy bwa backend) are staged alongside the FASTA so no
+// index is rebuilt inside a work dir. Whatever is absent is simply not staged, so a lean
+// BGZF-only checkout (Phase 3) stages ~0.91 GB per haplotype instead of ~15 GB.
 
 process ANCHOR {
     input:
@@ -118,8 +120,18 @@ workflow {
         .filter { it && !it[0].startsWith('#') && it[0] != 'sample' }
         .map { row ->
             def fa = file(row[3])
+            // Sidecars may be named for the .fa.gz itself or for the .gz-stripped stem
+            // (a .mmi built before the Phase 3 repoint) -- collect both and dedupe, which
+            // mirrors the resolution order in `samples.sidecar_path`.
+            // `exists()` is load-bearing: for a pattern with no glob metacharacter `files()`
+            // hands back the literal path whether or not anything is there, so without this
+            // filter every optional sidecar (a PAF that was never built, the bwa index on a
+            // lean BGZF-only checkout) would be staged as a broken symlink and fail the task.
+            def stem = fa.toString().replaceFirst(/\.gz$/, '')
             def idx = ['fai','mmi','chm13.paf','amb','ann','bwt','pac','sa']
-                        .collectMany { files("${fa}.${it}") }
+                        .collectMany { files("${fa}.${it}") + files("${stem}.${it}") }
+                        .findAll { it.exists() }
+                        .unique()
             tuple("${row[0]}#hap${row[1]}", fa, idx)
         }
 

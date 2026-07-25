@@ -20,7 +20,11 @@ _CIGAR_RE = re.compile(r"(\d+)([MIDNSHP=X])")
 
 
 def paf_path(hap_fasta: str) -> str:
-    return hap_fasta + ".chm13.paf"
+    """PAF cache for a haplotype. Resolved via `samples.sidecar_path` so a `.fa.gz`
+    `local_path` still finds a cache built beside the `.fa` (see that function)."""
+    from .samples import sidecar_path
+
+    return sidecar_path(hap_fasta, ".chm13.paf")
 
 
 @dataclass
