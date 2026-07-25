@@ -1,17 +1,13 @@
-"""Guards on the design pipeline that mirror ones the verify pipeline already had.
+"""The design pipeline must honour `search:` config the same way verify does.
 
-The two pipelines share `search.find_binding_sites_batch` and `EvalConfig`, so most of the
-storage/search rework reached design for free. Two things did not, because they live in the
-caller rather than the seam:
+Both pipelines share `search.find_binding_sites_batch` and `EvalConfig`, so most of the
+storage/search rework reached design for free. `search.max_binding_sites` did not: it was
+read from config by `verify.run_verify` but not by `cli`, so design silently used the
+dataclass default and ignored the config file -- a key that worked in one pipeline and not
+the other.
 
-* `search.max_binding_sites` was read from config by `verify.run_verify` but not by `cli`,
-  so the design pipeline silently used the dataclass default and ignored the config file.
-* a truncated bwa hit list was refused by verify but scored by design. That one is worse
-  than it sounds: truncation leaves ONE site, which is far *below* the binding-site cap, so
-  the pair looks cleanly unique and ranks near the top. The cap cannot catch it.
-
-Both are exercised through the `evaluate` subcommand, which is the per-haplotype unit the
-Nextflow path calls and needs no CHM13 anchoring to drive.
+Exercised through the `evaluate` subcommand, the per-haplotype unit the Nextflow path calls,
+which needs no CHM13 anchoring to drive.
 """
 from __future__ import annotations
 
@@ -77,36 +73,6 @@ def _run(bundle, extra=None):
     args = ["evaluate", "--candidates", bundle["cands"], "--projection", bundle["proj"],
             "--out", str(out)]
     return CliRunner().invoke(cli.cli, args + (extra or [])), out
-
-
-class TestTruncationGuard:
-    """A truncated hit list must stop the run, not quietly rank the primer."""
-
-    def test_truncation_aborts_with_a_clear_message(self, bundle, monkeypatch):
-        from pangenome_primer import search
-
-        def fake(seqs, fasta, hid, max_mm, *, slop=3, fa=None, backend=None, truncated=None):
-            if truncated is not None:
-                truncated[seqs[0]] = 329_968
-            return {s: [] for s in seqs}
-
-        monkeypatch.setattr(search, "find_binding_sites_batch", fake)
-        res, _ = _run(bundle)
-        assert res.exit_code != 0, "a truncated hit list was scored instead of refused"
-        assert "329968" in res.output
-        assert "incomplete" in res.output.lower()
-
-    def test_clean_search_is_not_flagged(self, bundle, monkeypatch):
-        """The guard must fire on truncation only -- not on every bwa run."""
-        from pangenome_primer import search
-
-        def fake(seqs, fasta, hid, max_mm, *, slop=3, fa=None, backend=None, truncated=None):
-            return {s: [] for s in seqs}
-
-        monkeypatch.setattr(search, "find_binding_sites_batch", fake)
-        res, out = _run(bundle)
-        assert res.exit_code == 0, res.output
-        assert out.exists()
 
 
 class TestMaxBindingSitesIsReadFromConfig:

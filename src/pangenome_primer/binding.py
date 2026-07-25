@@ -4,9 +4,8 @@ Two backends behind one interface (`find_binding_sites`):
 
 * **naive** — pure Python, no deps. O(N*L) sliding window with a mismatch budget. Correct
   and exact; used for tiny fixtures, small projected windows, and the correctness tests.
-* **bwa** — for genome-wide search on multi-Gb assemblies (added when the conda env is
-  built). `bwa aln -n` reports short-seed hits with mismatches; we re-derive 3' offsets
-  from the CIGAR/MD. Not needed for the subset correctness path.
+* **rust** — the compiled scanner, for genome-wide search on multi-Gb assemblies. Exact,
+  not heuristic: identical results to `naive`, just fast enough to use on a real genome.
 
 Strand convention (reference given as top strand T, 5'->3'):
   * PLUS  site: primer sequence matches T[i:i+L]; primer 3' base at i+L-1.
@@ -129,15 +128,11 @@ def _find_rust(
 #: `find_binding_sites_naive` returns for the same arguments -- that equivalence is what
 #: `tests/test_rust_backend_differential.py` asserts over thousands of random cases.
 #:
-#: `bwa` maps to the naive comparator on purpose and is not a placeholder: `bwa` is a
-#: genome-wide, *file*-based index search with no in-memory mode, and `bwa_backend` already
-#: re-scores every candidate window it finds with `find_binding_sites_naive` (see
-#: `bwa_backend.py`), so the naive comparator IS what the bwa path answers with once a
-#: reference string is in hand. The genome-wide dispatcher lives in `search.py`.
+#: This dispatcher is the *in-memory* one (a reference string already in hand). The
+#: genome-wide, file-based dispatcher lives in `search.py`.
 _BACKENDS = {
     "naive": find_binding_sites_naive,
     "rust": _find_rust,
-    "bwa": find_binding_sites_naive,
 }
 
 

@@ -1,26 +1,16 @@
 #!/usr/bin/env bash
-# Prepare the HPRC R2 haplotype subset: download -> md5 -> BGZF faidx, for every haplotype
-# in config/samples.tsv. Fully resumable (each step is skipped if its output already
+# Prepare the HPRC R2 haplotype subset: download -> md5 -> BGZF faidx -> anchor grid, for
+# every haplotype in config/samples.tsv. Fully resumable (each step is skipped if its output already
 # exists), logs to hprc-r2/prepare.log.
 #
-# Storage (Phase 3). The default path keeps what HPRC already ships plus two small indexes
-# -- 0.90 GB .fa.gz + .fa.gz.fai + .fa.gz.gzi -- and the 5.80 GB minimap2 projection index,
-# so ~6.7 GB per haplotype rather than the previous ~15 GB. The rust search backend streams
-# the BGZF directly and pysam random-accesses it through the .fai/.gzi pair, so neither the
-# 3.08 GB uncompressed .fa nor the 5.31 GB bwa index is needed.
+# Storage. Everything kept is what HPRC already ships plus small sidecars: the 0.90 GB
+# .fa.gz, its .fa.gz.fai + .fa.gz.gzi (<1 MB), and a ~4 MB projection anchor grid --
+# ~0.91 GB per haplotype, against ~15 GB before. The search backend streams the BGZF
+# directly and pysam random-accesses it through the .fai/.gzi pair, so no uncompressed .fa
+# and no per-haplotype search or alignment index is ever built. Across the 464-haplotype
+# HPRC R2 that is ~0.4 TB rather than ~7 TB.
 #
-# The .mmi is still the single largest item and is still built here: projection has no
-# replacement until the sparse anchor grid lands (Phase 4). Dropping it now would not save
-# space -- project.py would just rebuild an equivalent index in-process on every run. Once
-# Phase 4 lands this falls to ~0.91 GB/haplotype, i.e. ~0.4 TB rather than ~7 TB across the
-# 464-haplotype HPRC R2.
-#
-# WITH_BWA=1 restores the old behaviour (gunzip + bwa index, ~8.4 GB/haplotype). It is
-# needed only to run `search.backend: bwa`, which is kept as the reference implementation
-# the rust path was validated against -- not for normal use.
-#
-# On completion, rewrites the samples.tsv local_path column to whichever file is now the
-# canonical one (.fa.gz by default, .fa under WITH_BWA=1).
+# On completion, rewrites the samples.tsv local_path column to the .fa.gz.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 source ~/miniforge3/etc/profile.d/conda.sh && conda activate pangenome-primer
@@ -67,31 +57,6 @@ grep -vE '^#|^sample\b' "$TSV" | while IFS=$'\t' read -r sample hap superpop loc
   if [ ! -s "$gz.gzi" ] || [ ! -s "$gz.fai" ]; then
     log "$id faidx (bgzf) ..."
     samtools faidx "$gz" || { log "$id BGZF FAIDX FAILED"; rm -f "$gz.fai" "$gz.gzi"; continue; }
-  fi
-  # 4) uncompressed .fa + bwa index — ONLY for the reference bwa backend (WITH_BWA=1).
-  # Together they cost 8.39 GB/haplotype and ~55 min of bwa indexing; the default rust
-  # backend needs neither.
-  if [ "${WITH_BWA:-0}" = "1" ]; then
-    if [ ! -s "$fa" ]; then
-      log "$id gunzip (WITH_BWA) ..."
-      gunzip -kf "$gz" || { log "$id GUNZIP FAILED"; rm -f "$fa"; continue; }
-    fi
-    if [ ! -s "$fa.fai" ]; then
-      log "$id faidx ..."
-      samtools faidx "$fa" || { log "$id FAIDX FAILED"; rm -f "$fa.fai"; continue; }
-    fi
-    # bwa writes .bwt/.sa/.pac/.amb/.ann directly (no single renameable output), so on
-    # failure remove all of them — otherwise a partial .bwt looks "present" to a resumed run.
-    if [ ! -s "$fa.bwt" ]; then
-      t0=$(date +%s); log "$id bwa index ..."
-      if bwa index "$fa" 2>>"$LOG"; then
-        log "$id bwa index done ($(( ($(date +%s)-t0)/60 )) min)"
-      else
-        log "$id BWA INDEX FAILED"; rm -f "$fa.bwt" "$fa.sa" "$fa.pac" "$fa.amb" "$fa.ann"; continue
-      fi
-    else
-      log "$id already indexed (bwa)"
-    fi
   fi
   # 6) projection cache. minimap2 reads the BGZF directly, so this works with or without
   # the uncompressed .fa. Sidecars are written next to whichever file is canonical, and an
@@ -144,14 +109,9 @@ print(f\"  {s['anchors']}/{s['probes']} anchored ({s['anchored_fraction']:.1%}),
   log "$id READY"
 done
 
-# Point the pipeline at whichever file is now canonical. Leave the https source_url column
-# intact: local paths have no spaces, so anchoring on the hprc-r2/assemblies/ prefix and
-# matching [^[:space:]] keeps the substitution inside the local_path column.
-if [ "${WITH_BWA:-0}" = "1" ]; then
-  sed -i -E 's#(hprc-r2/assemblies/[^[:space:]]+)\.fa\.gz#\1.fa#' "$TSV"
-  log "samples.tsv local_path -> .fa (WITH_BWA)"
-else
-  sed -i -E 's#(hprc-r2/assemblies/[^[:space:]]+)\.fa(\.gz)?([[:space:]]|$)#\1.fa.gz\3#' "$TSV"
-  log "samples.tsv local_path -> .fa.gz"
-fi
+# Point the pipeline at the .fa.gz. Leave the https source_url column intact: local paths
+# have no spaces, so anchoring on the hprc-r2/assemblies/ prefix and matching
+# [^[:space:]] keeps the substitution inside the local_path column.
+sed -i -E 's#(hprc-r2/assemblies/[^[:space:]]+)\.fa(\.gz)?([[:space:]]|$)#\1.fa.gz\3#' "$TSV"
+log "samples.tsv local_path -> .fa.gz"
 log "=== prepare_haplotypes complete ==="

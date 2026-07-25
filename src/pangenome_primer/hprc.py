@@ -28,8 +28,8 @@ DEMO_SAMPLES = ("HG01884", "HG00097", "HG00408")
 DOWNLOAD_GB_PER_HAP = 1.0     # compressed .fa.gz pulled now (0.90 GB measured)
 # After `prepare_haplotypes.sh`: the BGZF stays (0.90 GB), its .fai/.gzi cost <1 MB, and the
 # sparse projection anchor grid adds ~4.3 MB. The 3.08 GB uncompressed .fa and the 5.31 GB
-# bwa index are opt-in via WITH_BWA=1 (which returns this to ~15 GB); the 5.80 GB minimap2
-# .mmi the grid replaces is no longer built at all.
+# bwa index are no longer built at all, and neither is the 5.80 GB minimap2 .mmi the anchor
+# grid replaces.
 INDEXED_GB_PER_HAP = 0.91
 CHM13_GB = 8.5                # one-time reference + its indexes
 PIPELINE_PEAK_GB = 12.0       # peak RAM: one genome index in memory at a time
@@ -169,7 +169,7 @@ class ResourceCheck:
 
     n_haps: int
     download_gb: float   # compressed pull now
-    indexed_gb: float    # after gunzip + bwa + minimap2 indexing
+    indexed_gb: float    # after faidx + anchor-grid build
     free_disk_gb: float
     total_ram_gb: float  # 0.0 => could not determine
 

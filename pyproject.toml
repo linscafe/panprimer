@@ -31,10 +31,10 @@ python-source = "src"
 manifest-path = "rust/pgp-scan/Cargo.toml"
 module-name = "pangenome_primer._scan"
 features = ["pyo3/extension-module"]
-# The extension is OPTIONAL at import time (see pangenome_primer/rust_backend.py): a wheel
-# built for another platform, or an install where the Rust toolchain is missing, degrades
-# to the `bwa` backend instead of failing. `search.backend` in config/defaults.yaml is the
-# selector.
+# The extension does not raise at import (see pangenome_primer/rust_backend.py), but it is
+# REQUIRED for genome-scale search: there is no fallback backend. Without it,
+# `search.resolve_backend` raises with a build hint. `search.backend` in
+# config/defaults.yaml is the selector.
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

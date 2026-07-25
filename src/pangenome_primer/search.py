@@ -7,21 +7,22 @@ importing a concrete backend.
 Backends
 --------
 ``rust``   the compiled `pangenome_primer._scan` extension (`rust_backend.py`). Streams the
-           BGZF `.fa.gz`, no index on disk, exhaustive. The default.
-``bwa``    `bwa aln`/`samse` over the per-haplotype bwa index (`bwa_backend.py`). Needs the
-           uncompressed `.fa` plus a ~5.3 GB index. Kept working, and kept selectable, as
-           the reference the rust path was validated against.
+           BGZF `.fa.gz`, no index on disk, exhaustive. The default, and the only
+           genome-scale option.
 ``naive``  pure Python (`binding.find_binding_sites_naive`), for tiny references only. It is
            the correctness reference, not a genome-scale option: an O(N*L) Python scan of a
            3.1 Gb assembly does not finish in useful time, so `find_binding_sites_batch`
            refuses it above a small size rather than appearing to hang.
 
-Degrade, never break
---------------------
-`resolve_backend` never fails just because the extension is missing. ``rust`` (and
-``auto``) fall through to ``bwa`` with a warning; only an explicitly-named backend that is
-unavailable, or an unknown name, is an error. A platform without a wheel and without a Rust
-toolchain keeps working exactly as it did before Phase 2.
+Requires the compiled extension
+-------------------------------
+There is no genome-scale fallback. The `bwa` backend used to serve that role, and removing
+it removed the "degrade, never break" path with it: a platform with no wheel and no Rust
+toolchain now gets a clear error naming `maturin develop --release`, rather than a slower
+but working search. That is deliberate -- `bwa` could not be trusted on repeat-derived
+primers (it silently dropped the XA tag above `samse -n`, reporting a 330k-site Alu primer
+as a single unique hit), so keeping it as a fallback meant keeping a path that could answer
+*wrongly*. Failing loudly is better than degrading to that.
 """
 from __future__ import annotations
 
@@ -31,9 +32,8 @@ from .model import BindingSite
 
 #: Fallback chain per requested backend. `None` means "no fallback: use it or fail".
 _CHAIN: dict[str, tuple[str, ...]] = {
-    "auto": ("rust", "bwa"),
-    "rust": ("rust", "bwa"),
-    "bwa": ("bwa",),
+    "auto": ("rust",),
+    "rust": ("rust",),
     "naive": ("naive",),
 }
 
@@ -49,13 +49,7 @@ def _rust_ok() -> bool:
     return rust_backend.available()
 
 
-def _bwa_ok() -> bool:
-    import shutil
-
-    return shutil.which("bwa") is not None
-
-
-_PROBES = {"rust": _rust_ok, "bwa": _bwa_ok, "naive": lambda: True}
+_PROBES = {"rust": _rust_ok, "naive": lambda: True}
 
 
 def resolve_backend(name: str | None = None, *, warn=warnings.warn) -> str:
@@ -71,22 +65,12 @@ def resolve_backend(name: str | None = None, *, warn=warnings.warn) -> str:
             f"unknown search.backend {name!r}; expected one of "
             f"{sorted(_CHAIN)} (see config/defaults.yaml)"
         )
-    for i, candidate in enumerate(chain):
+    for candidate in chain:
         if _PROBES[candidate]():
-            if i:
-                why = (
-                    "the compiled pangenome_primer._scan extension is not installed"
-                    if chain[0] == "rust"
-                    else f"{chain[0]!r} is not available"
-                )
-                warn(
-                    f"search.backend={requested!r}: {why}; falling back to {candidate!r}."
-                )
             return candidate
     raise RuntimeError(
         f"no usable genome-wide search backend for search.backend={requested!r}: tried "
-        f"{list(chain)}. Install the compiled extension (`maturin develop --release`) or "
-        f"put `bwa` on PATH."
+        f"{list(chain)}. Build the compiled extension with `maturin develop --release`."
     )
 
 
@@ -107,33 +91,24 @@ def find_binding_sites_batch(
     slop: int = 3,
     fa=None,
     backend: str | None = None,
-    truncated: dict[str, int] | None = None,
 ) -> dict[str, list[BindingSite]]:
     """Genome-wide binding sites for many primers against one haplotype.
 
-    Identical contract to `bwa_backend.find_binding_sites_batch`, which is what this
-    replaces at `verify.py`, `cli.py:run` and `cli.py:evaluate`: returns
+    Returns
     `{primer_sequence: [BindingSite, ...]}` keyed by SEQUENCE (not primer name), with
     `primer_name` set to the sequence, deduplicated on `(chrom, start, strand)`.
 
-    `truncated`, if given, collects {primer_sequence -> true hit count} for primers whose
-    site list is INCOMPLETE. Only the bwa backend can populate it: above `samse -n` bwa drops
-    the XA tag wholesale, leaving one recoverable position for a primer that may bind
-    hundreds of thousands of places. Callers must not treat those lists as exhaustive -- that
-    is precisely how a ~330k-site Alu primer was reported as a dropout. `rust` and `naive`
-    enumerate everything and never truncate.
+    Every backend here is **exhaustive**: it proves <= `max_mismatches` or > `max_mismatches`
+    at every position, so the returned list is never a sample or a truncation. Callers may
+    rely on that. (The removed `bwa` backend could not promise it -- above `samse -n` it
+    dropped the XA tag wholesale and reported a ~330k-site Alu primer as a single unique
+    hit, which the pipeline then called an allele dropout.)
     """
     chosen = resolve_backend(backend)
     if chosen == "rust":
         from .rust_backend import find_binding_sites_batch as run
 
-        return run(seqs, fasta, haplotype_id, max_mismatches,
-                   slop=slop, fa=fa, truncated=truncated)
-    if chosen == "bwa":
-        from .bwa_backend import find_binding_sites_batch as run
-
-        return run(seqs, fasta, haplotype_id, max_mismatches,
-                   slop=slop, fa=fa, truncated=truncated)
+        return run(seqs, fasta, haplotype_id, max_mismatches, slop=slop, fa=fa)
     return _naive_batch(seqs, fasta, haplotype_id, max_mismatches, fa=fa)
 
 
@@ -160,8 +135,7 @@ def _naive_batch(
             raise ValueError(
                 f"search.backend='naive' refused on {fasta}: {total:,} bases exceeds the "
                 f"{NAIVE_MAX_BASES:,}-base guard. The naive backend is the correctness "
-                f"reference for small references, not a genome-scale search; use 'rust' "
-                f"or 'bwa'."
+                f"reference for small references, not a genome-scale search; use 'rust'."
             )
         uniq = sorted(set(seqs))
         out: dict[str, list[BindingSite]] = {s: [] for s in uniq}

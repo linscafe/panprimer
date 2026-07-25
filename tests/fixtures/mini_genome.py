@@ -9,8 +9,8 @@ writes fresh files under whatever `tmp_path` it is given, at test time.
 
 Sizing note: `binding.find_binding_sites_naive` is a pure-Python O(N*L) sliding-window
 scan -- correct by construction, and explicitly documented as meant "for tiny fixtures,
-small projected windows" rather than genome-scale search (that's exactly the gap `bwa`/
-the future rust backend fill). Measured on this machine, scanning a genuine multi-Mb
+small projected windows" rather than genome-scale search (that's exactly the gap the
+compiled rust backend fills). Measured on this machine, scanning a genuine multi-Mb
 genome with it took >100s for the conformance suite's battery of assertions -- far past
 CI's budget, and itself a small illustration of the runtime problem the optimization plan
 exists to fix. So CONTIG_LEN below is sized in the hundreds-of-kb, not multi-Mb: still

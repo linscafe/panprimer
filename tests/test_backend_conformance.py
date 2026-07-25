@@ -3,7 +3,7 @@
 Every binding-search backend must satisfy the contract in `binding.py`'s module docstring
 (the backend contract): haplotype-genome coordinates,
 `end - start == len(primer)`, 3'-end-relative `mismatch_offsets_3p`, correct `strand`, and
-(for backends that only prune, like `bwa_backend`) it is fine to return a SUPERSET of the
+(for a backend that only prunes rather than proving each position) it is fine to return a SUPERSET of the
 true positions since `binding.find_binding_sites_naive` re-scores every candidate window.
 
 This file runs one battery of assertions against every backend in `BACKENDS` below, using
@@ -34,7 +34,7 @@ MAX_MISMATCHES = 3
 # --- backend registry -------------------------------------------------------------------
 # Each entry is (name, loader). `loader()` returns a callable
 #   run(seqs, fasta_path, haplotype_id, max_mismatches) -> dict[str, list[BindingSite]]
-# matching `bwa_backend.find_binding_sites_batch`'s signature/return shape, or raises
+# matching the genome-wide batch signature/return shape, or raises
 # `pytest.skip.Exception` (via `pytest.skip(...)`) if the backend isn't available.
 
 

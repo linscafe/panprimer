@@ -1,6 +1,6 @@
 """Correctness anchor (plan verification step 2): a synthetic mini-pangenome where each
 haplotype is engineered to land in exactly one status. Runs in pure Python (rule mode),
-no primer3/bwa/network needed.
+no primer3/network needed.
 """
 from __future__ import annotations
 

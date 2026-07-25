@@ -16,7 +16,7 @@ Try it: run the bundled demo (GAPDH across 3 HPRC haplotypes, ~40 s once the dat
 > [!WARNING]
 > **First-time data setup is the slow part — plan ahead.** Before the demo or any real run you must download and prepare the genome data once (see [Setup](#setup) and [Get the data](#get-the-data)). For the 3-haplotype demo that is a **~30 min one-time job** plus the download; for a large subset it runs for hours and is best left unattended. Once prepared, runs themselves take well under a minute per pipeline.
 > - **Storage:** ~11 GB for the 3-haplotype demo — about **0.91 GB per haplotype** (the 0.90 GB BGZF `.fa.gz` HPRC ships, its `.fai`/`.gzi`, and a ~4 MB projection anchor grid) plus **~8.5 GB** for the CHM13 reference and its shared index.
->   The genome-wide search reads the compressed FASTA directly and projection uses the anchor grid, so none of the 3.08 GB uncompressed `.fa`, the 5.31 GB `bwa` index, or the 5.80 GB per-haplotype minimap2 index is built. Setting `WITH_BWA=1` restores the first two — needed only for the legacy `search.backend: bwa` — and puts this back at ~15 GB per haplotype.
+>   The genome-wide search reads the compressed FASTA directly and projection uses the anchor grid, so **no per-haplotype index is built at all** — not the 3.08 GB uncompressed `.fa`, nor a 5.31 GB search index, nor the 5.80 GB minimap2 index the grid replaces.
 > - **Memory:** ~1 GB at peak for search and projection. The one-time anchor-grid build loads the shared CHM13 index and peaks around **~11 GB**.
 
 **New here?** Start with the plain-language introductions: [design pipeline](docs/intro_design_pipeline.md) · [verify pipeline](docs/intro_verify_pipeline.md) (they explain what a pangenome is and why the pipelines work the way they do).
@@ -70,8 +70,6 @@ bash scripts/prepare_haplotypes.sh
 ```
 
 The assemblies stay compressed: the search backend streams the BGZF and `pysam` random-accesses it through the `.fai`/`.gzi` pair. Projection uses a **sparse anchor grid** — ~1 kb probes sampled every 10 kb and mapped against the *shared* CHM13 index, so one large index serves every haplotype instead of a 5.8 GB one each. The grid is ~4 MB and locates a target to within a few kb; the exact coordinate still comes from a base-level realignment of that window, so accuracy is unchanged.
-
-Prefix with `WITH_BWA=1` only if you need the legacy `search.backend: bwa`, which additionally decompresses each assembly and runs a ~55 min `bwa index` per haplotype.
 
 This is the local bottleneck; the containerized Nextflow `container` profile is the scale-out path when you outgrow one machine.
 
@@ -133,8 +131,7 @@ This produces `verify_matrix.html` (plus `verify.json` and `.tsv`): a matrix wit
 | Tool | Role here |
 |---|---|
 | [Primer3](https://github.com/primer3-org/primer3) / [primer3-py](https://github.com/libnano/primer3-py) | Primer candidate design and the thermodynamic (nearest-neighbor) binding model |
-| [BWA](https://github.com/lh3/bwa) | Legacy genome-wide binding-site search (`search.backend: bwa`), kept as the reference the default scanner was validated against |
-| [PyO3](https://pyo3.rs/) / [maturin](https://www.maturin.rs/), [rayon](https://github.com/rayon-rs/rayon), [flate2](https://github.com/rust-lang/flate2-rs) | The compiled BGZF scanner: Python bindings, data parallelism, and pure-Rust inflate |
+| [PyO3](https://pyo3.rs/) / [maturin](https://www.maturin.rs/), [rayon](https://github.com/rayon-rs/rayon), [flate2](https://github.com/rust-lang/flate2-rs) | The compiled BGZF scanner used for genome-wide binding-site search: Python bindings, data parallelism, and pure-Rust inflate |
 | [minimap2](https://github.com/lh3/minimap2) / [mappy](https://pypi.org/project/mappy/) | Input anchoring on CHM13 and locus projection onto haplotypes |
 | [SAMtools / HTSlib](https://www.htslib.org/) / [pysam](https://github.com/pysam-developers/pysam) | FASTA indexing and random-access sequence retrieval |
 | [SeqKit](https://github.com/shenwei356/seqkit) | FASTA/Q sequence manipulation |
@@ -147,7 +144,6 @@ This produces `verify_matrix.html` (plus `verify.json` and `.tsv`): a matrix wit
 - CHM13 v2.0 — [Nurk, S., *et al.* (2022). The complete sequence of a human genome. *Science* **376**, 44–53.](https://doi.org/10.1126/science.abj6987)
 - Primer3 — [Untergasser, A., *et al.* (2012). Primer3 — new capabilities and interfaces. *Nucleic Acids Research* **40**, e115.](https://doi.org/10.1093/nar/gks596)
 - minimap2 — [Li, H. (2018). Minimap2: pairwise alignment for nucleotide sequences. *Bioinformatics* **34**, 3094–3100.](https://doi.org/10.1093/bioinformatics/bty191)
-- BWA — [Li, H. & Durbin, R. (2009). Fast and accurate short read alignment with Burrows–Wheeler transform. *Bioinformatics* **25**, 1754–1760.](https://doi.org/10.1093/bioinformatics/btp324)
 - SAMtools / HTSlib — [Danecek, P., *et al.* (2021). Twelve years of SAMtools and BCFtools. *GigaScience* **10**, giab008.](https://doi.org/10.1093/gigascience/giab008)
 - SeqKit2 — [Shen, W., *et al.* (2024). SeqKit2: a Swiss army knife for sequence and alignment processing. *iMeta* **3**, e191.](https://doi.org/10.1002/imt2.191)
 - Nextflow — [Di Tommaso, P., *et al.* (2017). Nextflow enables reproducible computational workflows. *Nature Biotechnology* **35**, 316–319.](https://doi.org/10.1038/nbt.3820)

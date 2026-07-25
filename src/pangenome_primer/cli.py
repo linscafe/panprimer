@@ -101,7 +101,7 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
     (--target-assembly grch38 --grch38 <fa>), or a FASTA of the locus.
 
     Two-stage: stage A evaluates on-target coverage/dropout cheaply against each projected
-    homologous window (no genome-wide index); stage B runs the expensive genome-wide bwa
+    homologous window (no genome-wide scan); stage B runs the expensive genome-wide
     off-target search only on the top-K coverage candidates."""
     import pysam
 
@@ -204,7 +204,7 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
     shortlist = order[:k]
     click.echo(f"stage A done; genome-wide specificity (stage B) on top {k} by coverage")
 
-    # 5b) STAGE B — genome-wide bwa off-target search for the shortlist only. One batched
+    # 5b) STAGE B — genome-wide off-target search for the shortlist only. One batched
     # search per haplotype covers all shortlisted primers (index loaded once).
     short_cands = [candidates[i] for i in shortlist]
     short_seqs = ([c.pair.forward.sequence for c in short_cands]
@@ -214,27 +214,11 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
     def _sites(fasta, hid):
         if hid not in site_cache:
             click.echo(f"    stage B: genome-wide search ({backend}) on {hid} ...")
-            truncated: dict[str, int] = {}
             try:
                 site_cache[hid] = find_binding_sites_batch(
-                    short_seqs, fasta, hid, max_mm, fa=_fa(fasta),
-                    backend=backend, truncated=truncated)
+                    short_seqs, fasta, hid, max_mm, fa=_fa(fasta), backend=backend)
             except FileNotFoundError as e:
                 raise click.ClickException(str(e))
-            # Only bwa can truncate: above `samse -n` it drops the XA tag wholesale, leaving
-            # one recoverable position for a primer that may bind hundreds of thousands of
-            # places. The binding-site cap cannot catch it -- one site is far below the cap --
-            # so the pair would score as cleanly unique and rank near the top. Design has no
-            # per-cell state to express this, and a corrupted ranking is worse than a stopped
-            # run, so fail loudly.
-            if truncated:
-                worst = max(truncated.items(), key=lambda kv: kv[1])
-                raise click.ClickException(
-                    f"bwa reported {worst[1]} hits for primer {worst[0]} on {hid} but omitted "
-                    f"the XA tag, so its binding-site list is incomplete and any ranking "
-                    f"derived from it would be unreliable. This primer is repeat-derived. "
-                    f"Use search.backend=rust for an exhaustive scan."
-                )
         return site_cache[hid]
 
     results: list[PairResult] = []
@@ -420,7 +404,7 @@ def design_cmd(anchor_json, proj_files, config_path, out) -> None:
 @click.option("--mode", type=click.Choice(["thermo", "rule"]), default=None)
 @click.option("--out", required=True)
 def evaluate_cmd(candidates_json, proj_json, hap_fasta, config_path, mode, out) -> None:
-    """Stage 5: evaluate all candidate pairs against one haplotype (genome-wide bwa)."""
+    """Stage 5: evaluate all candidate pairs against one haplotype (genome-wide search)."""
     import pysam
 
     from .search import backend_from_config, find_binding_sites_batch
@@ -448,22 +432,11 @@ def evaluate_cmd(candidates_json, proj_json, hap_fasta, config_path, mode, out) 
         # one genome-wide search for ALL primers on this haplotype (one pass over the assembly)
         all_seqs = [c.pair.forward.sequence for c in cands] + [c.pair.reverse.sequence for c in cands]
         fa = pysam.FastaFile(fasta)
-        truncated: dict[str, int] = {}
         try:
             sites_by_seq = find_binding_sites_batch(
-                all_seqs, fasta, hid, max_mm, fa=fa, backend=backend, truncated=truncated)
+                all_seqs, fasta, hid, max_mm, fa=fa, backend=backend)
         except FileNotFoundError as e:
             raise click.ClickException(str(e))
-        # See the matching guard in `run`: a truncated list scores as cleanly unique because
-        # one site sits far below the binding-site cap, so it would silently corrupt the
-        # ranking. Only bwa can produce one.
-        if truncated:
-            worst = max(truncated.items(), key=lambda kv: kv[1])
-            raise click.ClickException(
-                f"bwa reported {worst[1]} hits for primer {worst[0]} on {hid} but omitted the "
-                f"XA tag, so its binding-site list is incomplete and any ranking derived from "
-                f"it would be unreliable. Use search.backend=rust for an exhaustive scan."
-            )
         for c in cands:
             design_tm = _pair_tm(c.pair.forward.sequence, c.pair.reverse.sequence, dcfg.tm_opt)
             ecfg = EvalConfig(
@@ -643,7 +616,7 @@ def fetch_subset_cmd(sample_ids, fetch_all, per_superpop, data_dir, out_path,
         rc = hprc.assess_resources(len(chosen), data_dir)
         click.echo(f"\nresource check for {rc.n_haps} haplotype(s):")
         click.echo(f"  download now  : ~{rc.download_gb:.0f} GB (.fa.gz)")
-        click.echo(f"  after indexing: ~{rc.indexed_gb:.0f} GB (FASTA + bwa + minimap2) "
+        click.echo(f"  after indexing: ~{rc.indexed_gb:.1f} GB (BGZF + anchor grid) "
                    f"+ ~{hprc.CHM13_GB:.0f} GB CHM13")
         click.echo(f"  free disk     : ~{rc.free_disk_gb:.0f} GB at {data_dir}  "
                    f"[{'ok' if rc.disk_ok else 'INSUFFICIENT'}]")

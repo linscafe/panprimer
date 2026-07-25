@@ -1,7 +1,7 @@
 """Evaluate a primer pair across haplotypes.
 
 This module holds the in-memory (naive-backend) evaluation used for the subset path and
-the correctness tests. At full scale the binding search is done by `bwa` inside a Nextflow
+the correctness tests. At full scale the binding search is done by the compiled scanner inside a Nextflow
 process and the resulting BindingSites are fed to `pcr.pair_amplicons` directly; the
 classification/pairing logic is identical either way.
 """
@@ -97,7 +97,7 @@ def evaluate_with_sites(
     cfg: EvalConfig,
 ) -> HaplotypeResult:
     """Shared core: classify competence, pair into amplicons, assign status. Backend-
-    agnostic — naive (in-memory) and bwa (genome-wide) paths both funnel through here."""
+    agnostic — the in-memory and genome-wide paths both funnel through here."""
     if expected_locus is None:
         return HaplotypeResult(
             haplotype_id,

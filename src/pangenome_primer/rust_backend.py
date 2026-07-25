@@ -1,25 +1,19 @@
 """Genome-wide primer binding search backed by the compiled Rust scanner.
 
-This is the Phase 2 replacement for `bwa_backend.find_binding_sites_batch`. It exposes the
-same signature and the same return shape (`{primer_sequence: [BindingSite, ...]}`, with
-`primer_name` set to the sequence), so the three lazy import sites in `verify.py`/`cli.py`
-swap between them without any other change. `search.py` is the dispatcher that picks.
+The genome-wide search engine. `search.py` is the dispatcher that selects it.
 
-Differences from the bwa path, all deliberate:
+Two properties worth stating plainly:
 
-* **No index.** It streams the BGZF `.fa.gz` HPRC already distributes, so the 3.08 GB `.fa`
-  and the 5.31 GB bwa index per haplotype become deletable (that is Phase 3's job, not
-  this module's).
-* **Exhaustive, not heuristic.** `bwa aln` prunes and `bwa samse -n 1000` caps alternative
-  hits; the extension proves <= `max_mismatches` or > `max_mismatches` at every position for
-  every primer in both orientations. `bwa_backend` re-scores its candidates with
-  `find_binding_sites_naive` for exactly this reason -- here the exact comparator IS the
-  search, so there is no re-scoring pass.
+* **No index.** It streams the BGZF `.fa.gz` HPRC already distributes, so no per-haplotype
+  index exists on disk at all.
+* **Exhaustive, not heuristic.** It proves <= `max_mismatches` or > `max_mismatches` at
+  every position for every primer in both orientations. The exact comparator IS the search,
+  so there is no candidate-generation or re-scoring pass, and no cap on reported hits.
 * **`slop` is inert.** It exists in the signature only because the seam has it; there are no
   candidate windows to widen. See `rust/pgp-scan/src/lib.rs`.
 
-The extension is optional. `available()` is false when it could not be imported (no wheel
-for this platform, no Rust toolchain at install time), and `search.py` degrades to `bwa`.
+`available()` is false when the extension could not be imported (no wheel for this platform,
+no Rust toolchain at install time); `search.resolve_backend` then raises with a build hint.
 Nothing here raises at import.
 """
 from __future__ import annotations
@@ -51,8 +45,8 @@ class ScanFileNotFound(FileNotFoundError):
 def resolve_scan_path(fasta: str) -> str:
     """Map a haplotype path from `samples.tsv` to the file this backend actually reads.
 
-    `config/samples.tsv` still points `local_path` at the uncompressed `.fa` (Phase 3
-    repoints it at the `.fa.gz`), so both must work today. Precedence, in order:
+`samples.tsv` normally points `local_path` at the `.fa.gz`, but an uncompressed `.fa` is
+    still supported. Precedence, in order:
 
     1. the path itself, if it already ends in `.gz` (it is expected to be BGZF);
     2. `<path>.gz` if it exists -- the HPRC-distributed BGZF file sitting beside the `.fa`.
@@ -105,13 +99,11 @@ def find_binding_sites_batch(
     *,
     slop: int = 3,
     fa=None,
-    truncated: dict[str, int] | None = None,
 ) -> dict[str, list[BindingSite]]:
     """Genome-wide binding sites for many primers in one pass over the assembly.
 
-    Signature-compatible with `bwa_backend.find_binding_sites_batch`. `truncated` is accepted
-    and never populated: this backend enumerates every site exhaustively, so its result is
-    never incomplete. Only bwa can truncate (it drops the XA tag above `samse -n`).
+    Exhaustive: every position is proved to be within or outside the mismatch budget, so the
+    result is never a truncation or a sample.
 
     `fa` (an already-open `pysam.FastaFile` the caller owns) is accepted and ignored: this
     backend reads the BGZF
@@ -120,7 +112,7 @@ def find_binding_sites_batch(
     if _ext is None:  # pragma: no cover - guarded by search.resolve_backend
         raise RuntimeError(
             "the compiled pangenome_primer._scan extension is not available; "
-            "build it with `maturin develop --release` or select search.backend: bwa"
+            "build it with `maturin develop --release`"
         )
     del fa
     path = resolve_scan_path(fasta)

@@ -206,7 +206,8 @@ def test_golden_verify_fixture_exists_and_has_off_target_and_dropout_rows():
     # under the forward primer's 3' terminal base: HG00097#hap1 (EUR) carries C and drops
     # out; HG01884#hap1 (AFR) and HG00408#hap1 (EAS) carry G and amplify.
     #
-    # The pair it replaced was an Alu consensus (~330k binding sites) that bwa's XA cap
+    # The pair it replaced was an Alu consensus (~330k binding sites) that the old bwa
+    # backend's XA cap
     # truncated to a single reported hit, so the pipeline saw no product and called it
     # "dropout" everywhere. `all(status == "dropout")` passed happily on that artefact.
     # Requiring BOTH outcomes is what makes this row evidence of a real 3'-end variant.
@@ -316,7 +317,7 @@ def test_slow_gate_is_not_silently_disabled(manifest):
 
 @pytest.mark.slow
 def test_verify_pipeline_reproduces_golden_verify_matrix(tmp_path):
-    """Regenerates verify.json from scratch (real bwa search + thermo classification
+    """Regenerates verify.json from scratch (real genome-wide search + thermo classification
     across 3 real HPRC haplotypes) and diffs it against tests/golden/verify.json cell for
     cell, including the CYP2D7-off-target and engineered-dropout rows. ~minutes; needs
     real genome data under hprc-r2/."""
