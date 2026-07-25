@@ -107,6 +107,7 @@ def find_binding_sites_batch(
     slop: int = 3,
     fa=None,
     backend: str | None = None,
+    truncated: dict[str, int] | None = None,
 ) -> dict[str, list[BindingSite]]:
     """Genome-wide binding sites for many primers against one haplotype.
 
@@ -114,16 +115,25 @@ def find_binding_sites_batch(
     replaces at `verify.py`, `cli.py:run` and `cli.py:evaluate`: returns
     `{primer_sequence: [BindingSite, ...]}` keyed by SEQUENCE (not primer name), with
     `primer_name` set to the sequence, deduplicated on `(chrom, start, strand)`.
+
+    `truncated`, if given, collects {primer_sequence -> true hit count} for primers whose
+    site list is INCOMPLETE. Only the bwa backend can populate it: above `samse -n` bwa drops
+    the XA tag wholesale, leaving one recoverable position for a primer that may bind
+    hundreds of thousands of places. Callers must not treat those lists as exhaustive -- that
+    is precisely how a ~330k-site Alu primer was reported as a dropout. `rust` and `naive`
+    enumerate everything and never truncate.
     """
     chosen = resolve_backend(backend)
     if chosen == "rust":
         from .rust_backend import find_binding_sites_batch as run
 
-        return run(seqs, fasta, haplotype_id, max_mismatches, slop=slop, fa=fa)
+        return run(seqs, fasta, haplotype_id, max_mismatches,
+                   slop=slop, fa=fa, truncated=truncated)
     if chosen == "bwa":
         from .bwa_backend import find_binding_sites_batch as run
 
-        return run(seqs, fasta, haplotype_id, max_mismatches, slop=slop, fa=fa)
+        return run(seqs, fasta, haplotype_id, max_mismatches,
+                   slop=slop, fa=fa, truncated=truncated)
     return _naive_batch(seqs, fasta, haplotype_id, max_mismatches, fa=fa)
 
 

@@ -150,12 +150,31 @@ def run_verify(
     for hid, fasta in haplos:
         progress(f"genome-wide search ({backend}) on {hid} ...")
         fa = pysam.FastaFile(fasta)
-        sites = find_binding_sites_batch(all_seqs, fasta, hid, max_mm, fa=fa, backend=backend)
+        truncated: dict[str, int] = {}
+        sites = find_binding_sites_batch(all_seqs, fasta, hid, max_mm, fa=fa,
+                                         backend=backend, truncated=truncated)
         aligner = None if Path(align_cache.paf_path(fasta)).exists() else make_aligner(fasta)
         for (spec, chrom, start, end, tstart, tend, expected_size, template, pair, ecfg) in pctx:
             proj = project_target(chrom, tstart, tend, template, fasta, aligner=aligner, fa=fa)
             if proj.locus is None:
                 cells[(spec.primer_id, hid)] = VerifyCell(hid, "uncertain", reason=proj.reason)
+                continue
+            # A truncated hit list is not evidence of anything: bwa dropped the XA tag, so
+            # what survives is one position out of possibly hundreds of thousands. Scoring it
+            # would manufacture a confident wrong verdict -- historically a DROPOUT, because
+            # the lone site had no partner nearby. Report the real count instead.
+            hit = next(((s, n) for s, n in ((spec.forward, truncated.get(spec.forward)),
+                                            (spec.reverse, truncated.get(spec.reverse)))
+                        if n is not None), None)
+            if hit is not None:
+                seq, total = hit
+                which = "forward" if seq == spec.forward else "reverse"
+                cells[(spec.primer_id, hid)] = VerifyCell(
+                    hid, "multi_product", [], [], False,
+                    f">{ecfg.max_binding_sites} binding sites ({which} primer); bwa reported "
+                    f"{total} hits but truncated the list, so it was not evaluated",
+                    site_cap=ecfg.max_binding_sites,
+                )
                 continue
             res = evaluate_with_sites(
                 pair, hid, sites.get(spec.forward, []), sites.get(spec.reverse, []),

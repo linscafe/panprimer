@@ -105,11 +105,16 @@ def find_binding_sites_batch(
     *,
     slop: int = 3,
     fa=None,
+    truncated: dict[str, int] | None = None,
 ) -> dict[str, list[BindingSite]]:
     """Genome-wide binding sites for many primers in one pass over the assembly.
 
-    Signature-compatible with `bwa_backend.find_binding_sites_batch`. `fa` (an already-open
-    `pysam.FastaFile` the caller owns) is accepted and ignored: this backend reads the BGZF
+    Signature-compatible with `bwa_backend.find_binding_sites_batch`. `truncated` is accepted
+    and never populated: this backend enumerates every site exhaustively, so its result is
+    never incomplete. Only bwa can truncate (it drops the XA tag above `samse -n`).
+
+    `fa` (an already-open `pysam.FastaFile` the caller owns) is accepted and ignored: this
+    backend reads the BGZF
     file itself and never needs random access.
     """
     if _ext is None:  # pragma: no cover - guarded by search.resolve_backend
