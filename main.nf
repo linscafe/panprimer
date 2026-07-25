@@ -81,7 +81,14 @@ process EVALUATE {
       path "result.${hid.replace('#','_')}.json"
     script:
     def mode_arg = mode ? "--mode ${mode}" : ''
+    // This is the fan-out: one task per haplotype, many at once. Left alone, the compiled
+    // scanner sizes its pool from the HOST's core count, so on a 256-core box each of 64
+    // concurrent tasks spawns 256 workers -- 16,384 threads over 256 cores. Handing it
+    // `task.cpus` makes threads x concurrency <= the allocation by construction rather than
+    // by convention. Tune the number via `withName: EVALUATE { cpus = N }` in
+    // nextflow.config; see ISSUE-002 in docs/issues.md for the measured curve.
     """
+    export PGP_SCAN_THREADS=${task.cpus}
     pangenome-primer evaluate --candidates ${shortlist} --projection ${proj} \
         --hap-fasta ${fa} ${mode_arg} --out result.${hid.replace('#','_')}.json
     """

@@ -110,7 +110,8 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
     from .mask import build_excluded_regions
     from .model import Locus
     from .project import AmbiguousAnchor, project_target, resolve_target
-    from .search import backend_from_config, find_binding_sites_batch
+    from .search import (backend_from_config, find_binding_sites_batch,
+                         threads_from_config)
 
     raw = cfgmod.load_raw(config_path)
     mode = mode or raw["dropout"]["mode"]
@@ -122,6 +123,7 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
     # does in verify; relying on the dataclass default silently ignored the config file.
     max_sites = raw["search"].get("max_binding_sites", EvalConfig.max_binding_sites)
     backend = backend_from_config(raw, warn=lambda m: click.echo(f"  warning: {m}"))
+    threads = threads_from_config(raw)
 
     # One FASTA handle per haplotype, reused for projection and for every candidate's
     # window fetches. Opening a handle re-reads the .fai and the (~756 KB) .gzi, and the
@@ -216,7 +218,8 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
             click.echo(f"    stage B: genome-wide search ({backend}) on {hid} ...")
             try:
                 site_cache[hid] = find_binding_sites_batch(
-                    short_seqs, fasta, hid, max_mm, fa=_fa(fasta), backend=backend)
+                    short_seqs, fasta, hid, max_mm, fa=_fa(fasta), backend=backend,
+                    threads=threads)
             except FileNotFoundError as e:
                 raise click.ClickException(str(e))
         return site_cache[hid]
@@ -407,7 +410,8 @@ def evaluate_cmd(candidates_json, proj_json, hap_fasta, config_path, mode, out) 
     """Stage 5: evaluate all candidate pairs against one haplotype (genome-wide search)."""
     import pysam
 
-    from .search import backend_from_config, find_binding_sites_batch
+    from .search import (backend_from_config, find_binding_sites_batch,
+                         threads_from_config)
     from .serialize import candidate_from_dict, locus_from_dict, result_to_dict
 
     raw = cfgmod.load_raw(config_path)
@@ -416,6 +420,7 @@ def evaluate_cmd(candidates_json, proj_json, hap_fasta, config_path, mode, out) 
     max_mm = raw["search"]["max_mismatches"]
     max_sites = raw["search"].get("max_binding_sites", EvalConfig.max_binding_sites)
     backend = backend_from_config(raw, warn=lambda m: click.echo(f"  warning: {m}"))
+    threads = threads_from_config(raw)
     cands = [candidate_from_dict(d) for d in json.loads(Path(candidates_json).read_text())["candidates"]]
     proj = json.loads(Path(proj_json).read_text())
     hid = proj["hap_id"]
@@ -434,7 +439,7 @@ def evaluate_cmd(candidates_json, proj_json, hap_fasta, config_path, mode, out) 
         fa = pysam.FastaFile(fasta)
         try:
             sites_by_seq = find_binding_sites_batch(
-                all_seqs, fasta, hid, max_mm, fa=fa, backend=backend)
+                all_seqs, fasta, hid, max_mm, fa=fa, backend=backend, threads=threads)
         except FileNotFoundError as e:
             raise click.ClickException(str(e))
         for c in cands:

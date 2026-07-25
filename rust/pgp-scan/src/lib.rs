@@ -30,6 +30,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 
 mod bgzf;
+mod pool;
 mod scanner;
 mod seq;
 
@@ -83,18 +84,21 @@ fn to_python<'py>(
 
 /// Genome-wide search over a BGZF (or plain) FASTA.
 ///
-/// `slop` is accepted for signature compatibility with
-/// `bwa_backend.find_binding_sites_batch`, where it widens the window fetched around each
-/// bwa candidate before re-scoring. This backend scans every position exhaustively, so
-/// there is no candidate window to widen and the value is ignored.
+/// `slop` is accepted for signature compatibility with the historical bwa backend, which
+/// widened the window fetched around each candidate before re-scoring. This backend scans
+/// every position exhaustively, so there is no candidate window to widen and the value is
+/// ignored.
+///
+/// `threads` sizes the crate's rayon pool the first time any scan runs; see `pool.rs`.
 #[pyfunction]
-#[pyo3(signature = (seqs, path, max_mismatches, slop = 3))]
+#[pyo3(signature = (seqs, path, max_mismatches, slop = 3, threads = None))]
 fn scan<'py>(
     py: Python<'py>,
     seqs: Vec<String>,
     path: &str,
     max_mismatches: usize,
     slop: usize,
+    threads: Option<usize>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let _ = slop;
     let (names, encoded) = prepare(seqs);
@@ -104,14 +108,18 @@ fn scan<'py>(
     let index = Index::build(&encoded, max_mismatches).map_err(PyValueError::new_err)?;
 
     let mut per_contig: Vec<(String, Vec<Hit>)> = Vec::new();
+    // `install` makes this the current pool for the whole traversal, so the nested inflate
+    // region inside `bgzf::stream` lands on it too rather than on rayon's global pool.
     let res: Result<(), std::io::Error> = py.detach(|| {
-        let mut parser = FastaParser::new(|c: Contig| {
-            let hits = index.scan_contig(&c.codes);
-            per_contig.push((c.name, hits));
-        });
-        bgzf::stream(path, |chunk| parser.feed(chunk))?;
-        parser.finish();
-        Ok(())
+        pool::pool(threads).install(|| {
+            let mut parser = FastaParser::new(|c: Contig| {
+                let hits = index.scan_contig(&c.codes);
+                per_contig.push((c.name, hits));
+            });
+            bgzf::stream(path, |chunk| parser.feed(chunk))?;
+            parser.finish();
+            Ok(())
+        })
     });
     res.map_err(|e| PyIOError::new_err(format!("{path}: {e}")))?;
 
@@ -125,13 +133,14 @@ fn scan<'py>(
 /// `binding.find_binding_sites_naive`, and what `binding.find_binding_sites(backend="rust")`
 /// dispatches to. Identical code path as `scan` apart from the FASTA/BGZF front end.
 #[pyfunction]
-#[pyo3(signature = (seqs, ref_seq, max_mismatches, chrom = "chr"))]
+#[pyo3(signature = (seqs, ref_seq, max_mismatches, chrom = "chr", threads = None))]
 fn scan_seq<'py>(
     py: Python<'py>,
     seqs: Vec<String>,
     ref_seq: &str,
     max_mismatches: usize,
     chrom: &str,
+    threads: Option<usize>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let (names, encoded) = prepare(seqs);
     if names.is_empty() {
@@ -139,8 +148,16 @@ fn scan_seq<'py>(
     }
     let index = Index::build(&encoded, max_mismatches).map_err(PyValueError::new_err)?;
     let codes = seq::encode(ref_seq);
-    let hits = py.detach(|| index.scan_contig(&codes));
+    let hits = py.detach(|| pool::pool(threads).install(|| index.scan_contig(&codes)));
     to_python(py, &names, &index, &[(chrom.to_string(), hits)])
+}
+
+/// Worker count of the scan pool -- what is live if a scan has run, otherwise what would be
+/// chosen. Lets a caller report the real number instead of assuming the one it asked for.
+#[pyfunction]
+#[pyo3(signature = (threads = None))]
+fn pool_threads(threads: Option<usize>) -> usize {
+    pool::threads(threads)
 }
 
 #[pymodule]
@@ -148,5 +165,6 @@ fn _scan(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_function(wrap_pyfunction!(scan, m)?)?;
     m.add_function(wrap_pyfunction!(scan_seq, m)?)?;
+    m.add_function(wrap_pyfunction!(pool_threads, m)?)?;
     Ok(())
 }

@@ -75,6 +75,63 @@ def _run(bundle, extra=None):
     return CliRunner().invoke(cli.cli, args + (extra or [])), out
 
 
+def _config_with(tmp_path, pattern, replacement, name="cfg.yaml"):
+    """A full copy of config/defaults.yaml with one key rewritten.
+
+    `load_raw` does not merge a partial file over the defaults, so a two-line test config
+    would KeyError on everything it omits. Start from the real defaults and override.
+    """
+    import re
+
+    cfg = tmp_path / name
+    cfg.write_text(re.sub(pattern, replacement, Path("config/defaults.yaml").read_text(),
+                          count=1, flags=re.M))
+    return cfg
+
+
+class TestSearchThreadsIsReadFromConfig:
+    """`search.threads` caps the compiled scanner's rayon pool (ISSUE-002). It is the knob
+    that keeps a concurrent fan-out from spawning cores x tasks threads, so a version that
+    parses cleanly and is then dropped on the floor is worse than no knob at all -- exactly
+    how `max_binding_sites` failed below."""
+
+    # The scanner's pool is per-process and built by whichever test scanned first, so asking
+    # for 3 here legitimately warns that it will not be honoured. That warning is the subject
+    # of its own test in tests/test_scan_stack_depth.py; what *this* test checks is the
+    # config -> call-site wiring, which is upstream of the pool entirely.
+    @pytest.mark.filterwarnings("ignore:search.threads=:RuntimeWarning")
+    def test_config_value_reaches_the_scanner(self, bundle, tmp_path):
+        cfg = _config_with(tmp_path, r"^  threads: .*$", "  threads: 3")
+
+        from pangenome_primer import search
+
+        captured = {}
+        real = search.find_binding_sites_batch
+
+        def spy(*a, **kw):
+            captured["threads"] = kw.get("threads")
+            return real(*a, **kw)
+
+        search.find_binding_sites_batch = spy
+        try:
+            res, _ = _run(bundle, ["--config", str(cfg)])
+        finally:
+            search.find_binding_sites_batch = real
+        assert res.exit_code == 0, res.output
+        assert captured.get("threads") == 3, (
+            f"design passed threads={captured.get('threads')!r}; config said 3"
+        )
+
+    def test_default_is_none_not_a_fabricated_number(self, bundle, tmp_path):
+        """Shipped default is null = "let the scanner choose", which on the sequential CLI
+        loop means all cores. A test that pinned a number here would lock in the wrong
+        behaviour for a solo scan."""
+        from pangenome_primer import search
+
+        assert search.threads_from_config({"search": {}}) is None
+        assert search.threads_from_config({"search": {"threads": None}}) is None
+
+
 class TestMaxBindingSitesIsReadFromConfig:
     def test_config_value_reaches_the_design_evaluation(self, bundle, tmp_path):
         """Previously `cli` relied on EvalConfig's default, so this key was honoured in

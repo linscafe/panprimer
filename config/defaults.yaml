@@ -29,6 +29,17 @@ search:
                              # reference for fixtures, not a genome-scale option.
                              # auto = same as rust. There is no fallback: without the
                              # compiled extension this raises. See search.py.
+  threads: null              # worker threads for the compiled scanner. null = let it choose
+                             # (all cores, capped at 16 so behaviour does not scale with a
+                             # 256-core host). Correct as-is while haplotypes are scanned one
+                             # at a time -- a solo scan should take the machine. Set it low
+                             # when several haplotypes run CONCURRENTLY, e.g. the Nextflow
+                             # EVALUATE fan-out: aim for threads x concurrency ~= core count.
+                             # Measured on 16 cores: 4 x 4 beat the default by 19%; parallel
+                             # efficiency is only 21% at 16 threads. Peak RSS is ~400 MB at
+                             # every thread count, so RAM never justifies a high value.
+                             # RAYON_NUM_THREADS still overrides. See ISSUE-002 in
+                             # docs/issues.md before setting this on a server.
   max_binding_sites: 100     # cap on amplification-competent binding sites per primer.
                              # Above it, scanning stops and the cell reads ">100 binding
                              # sites" instead of enumerating products -- a primer binding

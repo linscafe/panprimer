@@ -107,7 +107,7 @@ def run_verify(
 ) -> list[VerifyRow]:
     import pysam
 
-    from .search import backend_from_config, find_binding_sites_batch
+    from .search import backend_from_config, find_binding_sites_batch, threads_from_config
 
     raw = cfgmod.load_raw(config_path)
     mode = mode or raw["dropout"]["mode"]
@@ -116,6 +116,7 @@ def run_verify(
     # KeyError, so a user's pinned defaults.yaml keeps working.
     max_sites = raw["search"].get("max_binding_sites", EvalConfig.max_binding_sites)
     backend = backend_from_config(raw, warn=progress)
+    threads = threads_from_config(raw)
     tm_opt = cfgmod.design_config(raw).tm_opt
 
     haplos = load_haplotypes(samples_tsv)
@@ -153,7 +154,7 @@ def run_verify(
         fa = pysam.FastaFile(fasta)
         progress(f"genome-wide search ({backend}) on {hid} ...")
         sites = find_binding_sites_batch(all_seqs, fasta, hid, max_mm, fa=fa,
-                                         backend=backend)
+                                         backend=backend, threads=threads)
         aligner = make_aligner(fasta) if needs_whole_genome_aligner(fasta) else None
         for (spec, chrom, start, end, tstart, tend, expected_size, template, pair, ecfg) in pctx:
             proj = project_target(chrom, tstart, tend, template, fasta, aligner=aligner, fa=fa)

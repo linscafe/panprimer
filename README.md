@@ -21,7 +21,7 @@ Try it: run the bundled demo (GAPDH across 3 HPRC haplotypes, ~40 s once the dat
 
 **New here?** Start with the plain-language introductions: [design pipeline](docs/intro_design_pipeline.md) · [verify pipeline](docs/intro_verify_pipeline.md) (they explain what a pangenome is and why the pipelines work the way they do).
 
-See also [`CONTEXT.md`](CONTEXT.md) for the ubiquitous language and the [`docs/`](docs/) design docs — the plain-language intros above and the [config reference](docs/config_reference.md).
+See also [`CONTEXT.md`](CONTEXT.md) for the ubiquitous language and the [`docs/`](docs/) design docs — the plain-language intros above, the [config reference](docs/config_reference.md), and [sizing](docs/sizing.md) if you are running on anything larger than a laptop (the defaults are tuned for 16 cores / 16 GB and are not right for a big server).
 
 ## ⚙️ How it works
 

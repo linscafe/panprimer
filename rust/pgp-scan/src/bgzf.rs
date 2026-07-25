@@ -57,12 +57,44 @@ fn parse_member_header(b: &[u8]) -> Option<(usize, usize)> {
     None
 }
 
-fn inflate_raw(src: &[u8], isize_hint: usize) -> io::Result<Vec<u8>> {
+/// Allocate one decompressor. **`#[inline(never)] is load-bearing, not a hint.**
+///
+/// `Decompress::new` bottoms out in `InflateState::new_boxed`, which is `Box::default()` --
+/// it materialises the whole ~44 KB `InflateState` (a 32 KB LZ dictionary plus three Huffman
+/// tables) as a stack temporary and then memcpy's it into the box. LLVM does not elide that
+/// temporary.
+///
+/// Inlined into the closure below, that temporary lands in the frame of rayon's
+/// `bridge_producer_consumer::helper` -- which is *recursive*, splitting the member list and
+/// re-entering itself through `join`. Measured frame was 0xd298 = 53,912 bytes, against a
+/// 2 MiB default worker stack: roughly 38 frames to overflow, and a work-stealing worker
+/// nests deeper than the split depth alone suggests. That was ISSUE-001, an intermittent
+/// SIGSEGV whose frequency depended on the steal schedule rather than on the input.
+///
+/// Keeping this out of line confines the temporary to a leaf frame that pops immediately;
+/// only the boxed state (on the heap) crosses back. See `docs/issues.md`.
+#[inline(never)]
+fn new_decompressor() -> Decompress {
+    Decompress::new(false) // false => raw deflate, no zlib wrapper
+}
+
+/// Inflate one BGZF member with a **borrowed, reused** decompressor.
+///
+/// `d` is supplied per rayon job by `map_init` and reset per member, so a batch of ~500
+/// members costs one 44 KB allocation per worker instead of 500. `reset(false)` restores the
+/// raw-deflate state exactly as `new` left it, and also zeroes `total_out`, which the ISIZE
+/// check below reads.
+///
+/// The reset is load-bearing, and was checked by deleting it: the very next member in a job
+/// then inflates wrong (measured: 65,276 bytes against an ISIZE of 65,270). The length check
+/// below catches that and fails the scan loudly, which is the point of validating ISIZE per
+/// member rather than trusting the decompressor.
+fn inflate_raw(d: &mut Decompress, src: &[u8], isize_hint: usize) -> io::Result<Vec<u8>> {
     let mut out = vec![0u8; isize_hint];
     if isize_hint == 0 {
         return Ok(out);
     }
-    let mut d = Decompress::new(false); // false => raw deflate, no zlib wrapper
+    d.reset(false);
     d.decompress(src, &mut out, FlushDecompress::Finish)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("bgzf inflate: {e}")))?;
     let n = d.total_out() as usize;
@@ -174,7 +206,9 @@ where
 
         let inflated: Vec<Vec<u8>> = members
             .par_iter()
-            .map(|&(cs, ce, isz)| inflate_raw(&buf[cs..ce], isz))
+            .map_init(new_decompressor, |d, &(cs, ce, isz)| {
+                inflate_raw(d, &buf[cs..ce], isz)
+            })
             .collect::<io::Result<Vec<_>>>()?;
         for block in &inflated {
             if !block.is_empty() {

@@ -10,6 +10,13 @@
 # and no per-haplotype search or alignment index is ever built. Across the 464-haplotype
 # HPRC R2 that is ~0.4 TB rather than ~7 TB.
 #
+# Resources. MM_THREADS (default 4) sets minimap2 -t for the anchor-grid and PAF builds.
+# The binding constraint is RAM, not cores: ~8.3 GB peak per concurrent build, so a 16 GB
+# laptop fits exactly one while a 700 GB server fits ~64 -- the difference between ~62 h and
+# ~1 h for all 464 HPRC haplotypes. This script is sequential; to parallelise, split the
+# manifest and run several instances (every step is skipped when its output exists, so it is
+# safe and resumable). docs/sizing.md has the numbers and the split-and-run recipe.
+#
 # On completion, rewrites the samples.tsv local_path column to the .fa.gz.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
@@ -22,6 +29,15 @@ mkdir -p hprc-r2/assemblies
 log(){ echo "[$(date +'%F %T')] $*" | tee -a "$LOG"; }
 
 log "=== prepare_haplotypes start ($(nproc) cpus) TSV=$TSV ==="
+# Say out loud what this host can take, rather than leaving the defaults to be discovered by
+# an OOM two hours in. ~8.3 GB peak per concurrent grid build is the measured figure.
+_ram_gb=$(awk '/MemTotal/ {printf "%.0f", $2/1048576}' /proc/meminfo 2>/dev/null || echo 0)
+_fits=$(( _ram_gb / 9 )); [ "$_fits" -lt 1 ] && _fits=1
+log "host: $(nproc) cpus, ${_ram_gb} GB RAM -> MM_THREADS=${MM_THREADS:-4} (default 4)"
+if [ "$_fits" -gt 1 ]; then
+  log "  this host fits ~${_fits} CONCURRENT grid builds (~8.3 GB each); running 1."
+  log "  to use them: split $TSV and run several instances -- see docs/sizing.md."
+fi
 # CHM13 minimap2 index, built once, reused for every haplotype's projection PAF
 CHM13_MMI="${CHM13%.fa}.asm5.mmi"
 if [ -s "$CHM13" ] && [ ! -s "$CHM13_MMI" ]; then

@@ -82,6 +82,24 @@ def backend_from_config(raw: dict | None, *, warn=warnings.warn) -> str:
     return resolve_backend(name, warn=warn)
 
 
+def threads_from_config(raw: dict | None) -> int | None:
+    """Read `search.threads` out of a loaded config dict.
+
+    None (absent, null, or 0) means "let the scanner choose": all cores up to its own cap.
+    That is the right default for the CLI as it stands, which loops haplotypes one at a time
+    -- a solo scan should take the machine. It is the wrong default the moment haplotypes run
+    concurrently, which is why the key exists. See ISSUE-002 in `docs/issues.md` for the
+    measured curves; the short version is `threads x concurrent-haplotypes ~= core count`.
+    """
+    if not raw:
+        return None
+    n = (raw.get("search") or {}).get("threads")
+    if n is None:
+        return None
+    n = int(n)
+    return n if n > 0 else None
+
+
 def find_binding_sites_batch(
     seqs: list[str],
     fasta: str,
@@ -91,6 +109,7 @@ def find_binding_sites_batch(
     slop: int = 3,
     fa=None,
     backend: str | None = None,
+    threads: int | None = None,
 ) -> dict[str, list[BindingSite]]:
     """Genome-wide binding sites for many primers against one haplotype.
 
@@ -103,12 +122,16 @@ def find_binding_sites_batch(
     rely on that. (The removed `bwa` backend could not promise it -- above `samse -n` it
     dropped the XA tag wholesale and reported a ~330k-site Alu primer as a single unique
     hit, which the pipeline then called an allele dropout.)
+
+    `threads` sizes the compiled scanner's worker pool; None lets it choose. It is ignored by
+    the naive backend, which is single-threaded.
     """
     chosen = resolve_backend(backend)
     if chosen == "rust":
         from .rust_backend import find_binding_sites_batch as run
 
-        return run(seqs, fasta, haplotype_id, max_mismatches, slop=slop, fa=fa)
+        return run(seqs, fasta, haplotype_id, max_mismatches, slop=slop, fa=fa,
+                   threads=threads)
     return _naive_batch(seqs, fasta, haplotype_id, max_mismatches, fa=fa)
 
 

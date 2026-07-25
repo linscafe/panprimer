@@ -4,17 +4,23 @@ Open defects with enough evidence recorded that someone else — or a later sess
 them up cold. Each entry states what is **established** separately from what is
 **hypothesised**, because the difference decides how much of the diagnosis to trust.
 
+**Currently open: none.** ISSUE-001 and ISSUE-002 are resolved; their records are kept below
+in full, because the reasoning is the only thing that makes the fix reviewable and the
+measurements are the basis for how the scanner should be sized on a bigger host.
+
 ---
 
 ## ISSUE-001 — Intermittent segfault in `pangenome_primer._scan` (stack overflow)
 
 | | |
 |---|---|
-| **Status** | Open. Not yet fixed. |
-| **Severity** | High — crashes the process; no wrong answers observed. |
+| **Status** | **Resolved** 2026-07-25. Root cause established, not inferred. |
+| **Severity** | High — crashed the process; no wrong answers observed. |
 | **Found** | 2026-07-25, while profiling scan cost for the Phase 5/6 review. |
 | **Component** | `rust/pgp-scan` (`pangenome_primer._scan`), v0.1.0 |
-| **Environment** | Linux 6.18.35.2-microsoft-standard-WSL2, 16 cores / 16 GB; Python 3.12.13; rustc 1.89.0; pyo3 0.29, rayon 1.10, flate2 1.0 (miniz_oxide) |
+| **Environment** | Linux 6.18.35.2-microsoft-standard-WSL2, 16 cores / 16 GB; Python 3.12.13; rustc 1.89.0; pyo3 0.29, rayon 1.10, flate2 1.1.9 (miniz_oxide 0.8.9) |
+| **Fixed by** | `bgzf.rs`: `#[inline(never)] new_decompressor` + `map_init` reuse. `pool.rs`: explicit 16 MiB worker stacks. |
+| **Regression test** | `tests/test_scan_stack_depth.py` |
 
 ### Symptom
 
@@ -26,9 +32,9 @@ A Python process calling `rust_backend.find_binding_sites_batch` repeatedly died
 /bin/bash: line 32: 1131932 Segmentation fault (core dumped) python - <<'EOF'
 ```
 
-### Reproduction: currently NOT reproducible on demand
+### Reproduction: was NOT reproducible on demand
 
-This is the most important fact about the issue. After the initial crash:
+This was the most important fact about the issue while it was open. After the initial crash:
 
 | attempt | result |
 |---|---|
@@ -38,10 +44,11 @@ This is the most important fact about the issue. After the initial crash:
 | each primer count (1/2/8/32/128) in its own process | all completed |
 | every golden gate run to date (16 passed, several runs) | no crash |
 
-So it is **schedule-dependent, not input-dependent**. Do not treat "I ran it and it was
-fine" as evidence the bug is absent.
+So it was **schedule-dependent, not input-dependent**, and "I ran it and it was fine" was
+never evidence of absence. That is also why the fix is not certified by a clean run count —
+see *Verification* below.
 
-### Established: this is a stack overflow, not memory corruption
+### Established: a stack overflow, not memory corruption
 
 From `dmesg`:
 
@@ -57,76 +64,109 @@ RSP: 002b:00007dc099809c68
 FS:  00007dc099a096c0  GS: 0000000000000000
 ```
 
-Three things follow, and all three are solid:
+1. **The faulting address equals `sp`.** A write to the stack pointer's own page failing
+   means the guard page was reached.
+2. **The instruction bytes are LLVM's stack-probe loop** — emitted when a function reserves a
+   frame larger than one page, touching each page on the way down so the guard page is hit
+   deterministically. The probe walks a frame of `0xd000` (52 KB), with a further
+   `sub rsp, 0x298` after the loop.
+3. **`FS:` is a thread-local base distinct from the main thread**, and the fault is inside
+   `_scan...so` — a rayon pool thread.
 
-1. **The faulting address equals `sp`** (`segfault at 7dc099809c68`, `sp 00007dc099809c68`).
-   A write to the stack pointer's own page failing means the guard page was reached.
-2. **The instruction bytes are LLVM's stack-probe loop** — the sequence emitted when a
-   function reserves a frame larger than one page, touching each page on the way down so the
-   guard page is hit deterministically rather than skipped. The probe is walking a frame of
-   at least `0xd000` (52 KB), with a further `sub rsp, 0x298` after the loop.
-3. **`FS:` is set to a thread-local base distinct from the main thread**, and the fault is
-   inside `_scan...so`, so this is a worker thread in the extension — a rayon pool thread.
+### Established: which frame
 
-Together: a rayon worker exhausted its stack. This is *not* a data race, use-after-free, or
-heap corruption, and it should not be investigated as one.
+The earlier draft of this record listed the frame as *hypothesised* and named `inflate_raw`
+as a guess. It has since been attributed properly, on the exact binary that crashed.
 
-### Hypothesised: which frame, and why it only sometimes overflows
+The kernel's `[2b23b,...]` is the **file offset**, so `addr2line -e _scan...so 0x2b23b`:
 
-**This part is inference and has not been confirmed.**
+```
+rayon::iter::plumbing::bridge_producer_consumer::helper
+```
 
-Two rayon parallel regions exist and they are adjacent in the call graph:
+and `objdump` at that symbol reproduces the dmesg bytes exactly, `0xd000` probe and all:
 
-- `bgzf.rs:175` — `members.par_iter().map(|..| inflate_raw(..))`, inflating BGZF blocks.
-- `scanner.rs:292` — `(0..n_chunks).into_par_iter()` inside `scan_contig`.
+```
+2b22d:  49 81 eb 00 d0 00 00   sub  $0xd000,%r11
+2b234:  48 81 ec 00 10 00 00   sub  $0x1000,%rsp
+2b23b:  48 c7 04 24 00 00 00   movq $0x0,(%rsp)      <-- the faulting ip
+2b248:  48 81 ec 98 02 00 00   sub  $0x298,%rsp
+```
 
-They are chained through the streaming sink: `lib.rs:112` calls `bgzf::stream(path, |chunk|
-parser.feed(chunk))`, and the parser calls `index.scan_contig(&c.codes)` at `lib.rs:109`
-when a contig completes.
+Total frame **0xd298 = 53,912 bytes**. Two facts make this fatal:
 
-`inflate_raw` (`bgzf.rs:60`) constructs `flate2::Decompress::new(false)` per block. flate2's
-pure-Rust backend holds a large inflate state (Huffman tables plus a 32 KB LZ window), which
-matches the ~52 KB probe. Rust's default spawned-thread stack is 2 MiB, and rayon does not
-raise it. Under recursive splitting and work-stealing a single worker can accumulate several
-such frames, and *how many* depends on the steal schedule — which would explain why the same
-input crashes once and then succeeds a dozen times.
+* **`bridge_producer_consumer::helper` is recursive.** It is rayon's splitter: it halves the
+  work and re-enters itself through `join`. A worker blocked in `join` also *steals* other
+  tasks and runs them on the same stack, so the depth reached is a property of the
+  work-stealing schedule — which is precisely why the same input crashed once and then
+  succeeded a dozen times.
+* **Rust's default spawned-thread stack is 2 MiB** and rayon does not raise it. 2 MiB ÷ 54 KB
+  ≈ 38 frames. With `READ_CHUNK` = 32 MB yielding ~500 BGZF members, split depth alone is
+  ~9 (≈ 486 KB); a couple of nested steals reach the guard page.
 
-**Not established:** that `inflate_raw` is the frame in question. Nobody has attributed
-`ip 0x7dc09c78923b` to a symbol. Do that first — `addr2line`/`objdump` against the built
-`.so`, or reproduce under `rust-gdb` — rather than trusting the paragraph above.
+Which of the two parallel regions it was, confirmed from the calls inside that frame
+(`drop_in_place<ListVecFolder<Vec<u8>>>`, `io::Error::new`): the **inflate** region,
+`bgzf.rs`'s `members.par_iter()`, not `scanner.rs`'s `scan_contig`.
 
-### Why this matters more than it looks
+**Why the frame was 54 KB.** `Decompress::new(false)` → flate2 `Inflate::make` →
+`InflateState::new_boxed`, which is `Box::default()`:
+
+```rust
+pub fn new_boxed(data_format: DataFormat) -> Box<InflateState> {
+    let mut b: Box<InflateState> = Box::default();   // built on the STACK, then memcpy'd
+```
+
+`InflateState` is a 32 KB LZ dictionary plus three Huffman tables ≈ 44 KB, and LLVM does not
+elide the temporary. Inlined into the `par_iter().map(...)` closure, that temporary became
+part of `helper`'s frame.
+
+Neither crate is at fault on its own. flate2 constructing a large value and rayon recursing
+are both reasonable; the combination was ours.
+
+### The fix
+
+1. **`bgzf.rs` — take the frame off the recursive stack.** `new_decompressor()` is
+   `#[inline(never)]`, so the 44 KB temporary lives in a leaf frame that pops immediately and
+   only the boxed state crosses back. `#[inline(never)]` here is load-bearing, not a hint.
+2. **`bgzf.rs` — reuse the decompressor.** `map_init(new_decompressor, ...)` gives each rayon
+   job one `Decompress`, reset per member, so a ~500-member batch costs one 44 KB allocation
+   per worker rather than 500.
+3. **`pool.rs` — stop inheriting rayon's defaults.** A dedicated `ThreadPoolBuilder` with an
+   explicit `stack_size` (16 MiB; address space, not RSS) and an explicit thread count. Kept
+   even though (1) removes the pressure, because a stack limit chosen by accident is what let
+   a foreseeable overflow become an intermittent SIGSEGV. `PGP_SCAN_STACK` overrides it.
+
+After the fix, both `helper` monomorphisations have **440- and 424-byte** frames, and the
+53 KB probe appears only in `pgp_scan::bgzf::new_decompressor`, a non-recursive leaf.
+
+### Verification
+
+A clean run count cannot certify a schedule-dependent bug — the bug already survived several
+clean runs. So the fix was verified by **shrinking the stack until the difference is
+deterministic** (`PGP_SCAN_STACK` exists for this):
+
+| build | worker stack | result |
+|---|---|---|
+| inlined `Decompress::new` (the bug) | 256 KB | **SIGSEGV, 3 of 3 runs** |
+| inlined `Decompress::new` | 2 MiB (what shipped) | completes — the intermittency |
+| `#[inline(never)]` + `map_init` | 256 KB | completes |
+| `#[inline(never)]` + `map_init` | 128 KB | completes |
+
+That is a causal demonstration: same binary, same input, same thread count, one line of
+attribute changed. Against the shipped 16 MiB stack the fixed build has ≥128× headroom.
+
+`tests/test_scan_stack_depth.py` pins it at a 256 KB stack, and was itself checked to **fail
+on the buggy build** (returncode −11) rather than merely pass on the fixed one.
+
+Also confirmed: 50 consecutive runs of the original triggering script, `pytest -q`
+(150 passed), and the golden gate unchanged.
+
+### Why it mattered more than it looked
 
 `verify.run_verify` issues **one scan call per haplotype in a single process**. The exposure
-that has actually been exercised is 3 calls. A 464-haplotype run is 150× that, and the crash
-would land after hours of work with no partial output. A defect that is rare at demo scale is
-not rare at production scale — it is merely untested there.
-
-No incorrect results have been attributed to this. The failure mode observed is a hard crash,
-which is the benign direction.
-
-### Fix directions, cheapest first
-
-1. **Give the pool a bigger stack.** Build a dedicated
-   `rayon::ThreadPoolBuilder::new().stack_size(N)` and run both parallel regions inside it.
-   Addresses stack exhaustion regardless of which frame is responsible; does not require
-   root-causing first. Lowest risk, and the right move if a fix is needed before the
-   attribution work is done.
-2. **Heap-allocate the decompressor / hoist it out of the hot path.** Reusing one
-   `Decompress` per worker via `reset()` removes both the large frame and the per-block
-   allocation. Likely a small throughput win as well.
-3. **De-nest the two parallel regions.** Worth doing independently: the scan currently uses
-   **738% of a possible 1600% CPU** because inflate and scan alternate rather than overlap.
-   Pipelining them addresses the stack depth *and* is the largest remaining performance
-   item.
-
-### Verification before closing
-
-- Attribute the faulting `ip` to a symbol; record it here.
-- Run the triggering profile script **50×** without a crash. One clean run proves nothing —
-  the bug already survived several.
-- `pytest -q` and the backend conformance + differential suites unchanged.
-- Re-measure scan wall time; fixes 2 and 3 should not regress it, and may improve it.
+actually exercised was 3 calls. A 464-haplotype run is 150× that, and the crash would land
+after hours of work with no partial output. A defect that is rare at demo scale is not rare
+at production scale — it is merely untested there.
 
 ---
 
@@ -134,33 +174,33 @@ which is the benign direction.
 
 | | |
 |---|---|
-| **Status** | Open. Not yet fixed. |
-| **Severity** | Low today, **High on any server/cloud host.** Correctness is unaffected; throughput is not. |
+| **Status** | **Resolved** 2026-07-25 (same fix site as ISSUE-001). |
+| **Severity** | Low on the laptop, **High on any server/cloud host.** Correctness unaffected; throughput was not. |
 | **Found** | 2026-07-25, while sizing the pipeline for a 256-core / 700 GB server. |
 | **Component** | `rust/pgp-scan` (`pangenome_primer._scan`), v0.1.0 |
-| **Trigger** | Host with many cores **and** more than one scan running concurrently. |
+| **Fixed by** | `rust/pgp-scan/src/pool.rs`; `search.threads` in `config/defaults.yaml` |
 
 ### The defect
 
-The crate never constructs a `rayon::ThreadPoolBuilder`. Both parallel regions
-(`bgzf.rs:175` inflate, `scanner.rs:292` scan) therefore run on rayon's **global pool, which
-defaults to one worker per logical CPU**. Nothing in the crate, the CLI, or
-`config/defaults.yaml` caps or exposes it.
+The crate never constructed a `rayon::ThreadPoolBuilder`. Both parallel regions
+(`bgzf.rs` inflate, `scanner.rs` scan) ran on rayon's **global pool, which defaults to one
+worker per logical CPU**. Nothing in the crate, the CLI, or `config/defaults.yaml` capped or
+exposed it.
 
-**This is currently benign, and that is exactly why it is easy to miss.** `verify.run_verify`
-loops haplotypes sequentially (`for hid, fasta in haplos:`), so on the 16-core development
-laptop exactly one scan runs at a time and taking all 16 cores is the *right* behaviour. The
-default is correct for the only configuration it has ever been run in.
+**This was benign at the time, which is exactly why it was easy to miss.**
+`verify.run_verify` loops haplotypes sequentially, so on the 16-core laptop exactly one scan
+runs at a time and taking all 16 cores is the *right* behaviour. The default was correct for
+the only configuration it had ever been run in.
 
-It becomes a defect the moment either of these changes:
+It became a defect the moment either changed:
 
 1. **haplotypes are processed in parallel** (the Nextflow `EVALUATE` fan-out already does
-   this, and parallelising the CLI loop is the obvious next optimisation); or
+   this); or
 2. **the host has many cores.**
 
 On a 256-core server running 64 concurrent haplotypes, each worker process spawns 256 rayon
-threads: **64 × 256 = 16,384 threads competing for 256 cores.** That is not a suboptimal
-setting, it is a thrashing one — the large server can end up *slower* than the laptop.
+threads: **64 × 256 = 16,384 threads competing for 256 cores.** Not a suboptimal setting, a
+thrashing one — the large server can finish behind the laptop.
 
 ### Measured: why a low cap is right for throughput
 
@@ -176,11 +216,11 @@ Single scan of `HG00097_hap1.fa.gz` (3.03 Gbp), varying `RAYON_NUM_THREADS`:
 | 12 | 6.83 s | 2.94× | 41.3 | 24% | 406 MB |
 | 16 | 5.84 s | 3.43× | 44.4 | **21%** | 410 MB |
 
-At 16 threads the scan burns **2.2× the CPU to go 3.4× faster**. For a single scan that is a
-fine trade; across 464 haplotypes it wastes more than half the machine.
+At 16 threads the scan burns **2.2× the CPU to go 3.4× faster**. Fine for a single scan;
+across 464 haplotypes it wastes more than half the machine.
 
-**Peak RSS is flat (~400 MB) regardless of thread count**, so memory never justifies a high
-cap — the constraint is purely CPU efficiency.
+**Peak RSS is flat (~400 MB) at every thread count**, so memory never justifies a high cap —
+the constraint is purely CPU efficiency.
 
 End-to-end, 8 real haplotypes on 16 cores:
 
@@ -193,19 +233,43 @@ End-to-end, 8 real haplotypes on 16 cores:
 
 ### Recommended settings
 
+**These now live in [`sizing.md`](sizing.md)**, together with the Nextflow sizing profiles and `scripts/sizing_sweep.sh` for re-measuring on a target host. Kept here for the record.
+
 Rule of thumb: **threads × concurrent-haplotypes ≈ core count**, threads in the 2–4 range.
 
-| scenario | `RAYON_NUM_THREADS` | concurrent haplotypes | peak RAM |
+| scenario | `search.threads` | concurrent haplotypes | peak RAM |
 |---|---|---|---|
-| 16-core laptop, CLI as it is today (sequential loop) | unset (16) — currently correct | 1 | 0.4 GB |
+| 16-core laptop, CLI as it is today (sequential loop) | `null` (→16) | 1 | 0.4 GB |
 | 16-core laptop, once haplotypes run in parallel | **4** | 4 | 1.6 GB |
 | **256-core server, many haplotypes** | **4** | **64** | ~26 GB |
 | 256-core server, single haplotype | 8–16 — **never 256** | 1 | 0.4 GB |
 
-For the anchor-grid build, the equivalent knob is minimap2's `-t` (`MM_THREADS` in
+For the anchor-grid build the equivalent knob is minimap2's `-t` (`MM_THREADS` in
 `scripts/prepare_haplotypes.sh`), and there the binding constraint is RAM, not cores: ~8.3 GB
-per concurrent build means **1 at a time on a 16 GB laptop** but ~64 on a 700 GB server —
-the difference between ~62 h and ~1 h for 464 haplotypes.
+per concurrent build means **1 at a time on a 16 GB laptop** but ~64 on a 700 GB server — the
+difference between ~62 h and ~1 h for 464 haplotypes.
+
+### The fix
+
+`pool.rs` resolves the worker count in this order, and builds one pool for the process:
+
+1. the `threads` argument — `search.threads` in `config/defaults.yaml`;
+2. `PGP_SCAN_THREADS`;
+3. `RAYON_NUM_THREADS` (kept working: it is the knob anyone tuning a rayon program reaches
+   for, and silently ignoring it would be its own defect);
+4. `min(available_parallelism, 16)`.
+
+Rule 4 is the part that closes the issue: **the default no longer scales with host core
+count.** It leaves the 16-core laptop exactly where it was — a solo scan still gets all 16,
+and capping lower would be a real regression (5.84 s at 16 vs 7.95 s at 8) — while making a
+256-core host behave like a 16-core one.
+
+`search.threads` is `null` by default, which is correct only while the CLI scans haplotypes
+one at a time. **Set it when scans run concurrently.**
+
+The pool is built once per process and is not resized; a later, different `threads` is
+ignored. `rust_backend` emits a `RuntimeWarning` when that happens rather than dropping it
+silently, and `rust_backend.pool_threads()` reports the live count.
 
 ### Measurement caveat — re-measure on the target host
 
@@ -214,25 +278,18 @@ plus hyperthreading**. The anomalous dip at 8 threads (7.95 s, slower than 6.88 
 the shape of an HT/physical boundary. A many-core server will have different NUMA topology
 and a different curve; the optimum could reasonably be 8 rather than 4.
 
-**Re-run this sweep on the target machine before fixing a value.** It takes about two
-minutes and the numbers here should not be copied to a server unexamined.
+**Re-run this sweep on the target machine before fixing a value.** It takes about two minutes
+and the numbers here should not be copied to a server unexamined.
 
-### Fix directions
+In Nextflow, `EVALUATE` exports `PGP_SCAN_THREADS=${task.cpus}`, so the `cpus` directive in
+`nextflow.config` *is* the scan-parallelism knob and a fan-out cannot oversubscribe by
+construction. It is set to 4, and `EVALUATE`'s memory reservation dropped 8 GB → 2 GB
+(measured peak RSS is ~400 MB; the scanner streams the BGZF and holds no index), as did
+`PROJECT`'s, which was sized for the 5.80 GB per-haplotype `.mmi` that the ~4 MB anchor grid
+replaced.
 
-1. **Set an explicit default inside the crate** rather than inheriting rayon's. A dedicated
-   `ThreadPoolBuilder` with a sane cap makes behaviour independent of host core count, and is
-   the same change ISSUE-001 needs for `stack_size` — do both at once.
-2. **Expose it as configuration**, e.g. `search.threads` in `config/defaults.yaml`, so it is
-   not reachable only through an environment variable that no documentation mentions.
-   `RAYON_NUM_THREADS` should remain an override.
-3. **Set it per task in `main.nf`**, derived from the Nextflow `cpus` directive, so a cluster
-   run cannot oversubscribe by construction.
-4. Document the threads × concurrency rule wherever the scale-out path is described.
+### Still open as a follow-up (not a defect)
 
-### Verification before closing
-
-- On a many-core host, confirm total thread count stays near the core count with N concurrent
-  workers (`ps -eLf | wc -l`), not N × cores.
-- Reproduce the 8-haplotype configuration sweep on that host and record the curve here.
-- Confirm the laptop single-haplotype path does not regress: a solo scan should still use all
-  available cores unless explicitly capped.
+* **De-nest the two parallel regions.** The scan uses **738% of a possible 1600% CPU**
+  because inflate and scan alternate rather than overlap. Pipelining them is the largest
+  remaining performance item.
