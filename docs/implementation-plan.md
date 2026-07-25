@@ -377,13 +377,46 @@ So expose it as **`search.scope`**: `exhaustive` (default) and `chm13-once`. Sam
 
 > **Gate rescoped from ≥5 haplotypes to 3.** The working set is deliberately the 3 demo haplotypes. This costs less than it appears: the exhaustive scanner is now cheap enough (6 s/haplotype) to run as ground truth on every gate, so the comparison is *stronger* than when the ≥5 figure was written and bwa made the reference path expensive.
 
+### Phase 5 landed 2026-07-25 — measured
+
+Implemented as `search.scope: exhaustive | chm13-once` (default `exhaustive`), in `chm13_once.py`, wired into `verify.run_verify`.
+
+| | exhaustive | chm13-once |
+|---|---:|---:|
+| per haplotype | 6.0–6.4 s | **0.88–0.99 s** |
+| sequence examined | 3,030 Mb | **22.9 Mb** (0.76%) |
+| 3 haplotypes, total | 18.6 s | **8.6 s** |
+| projected 464 | **47.9 min** | **7.3 min** (6.6×) |
+
+**Site-level differential against the exhaustive scan**, full-tuple comparison (chrom, start, **end**, strand, mismatches, 3′ offsets):
+
+| haplotype | exhaustive | chm13-once | missed | **extra** |
+|---|---:|---:|---:|---:|
+| HG01884#hap1 | 1,700 | 1,633 | 67 (3.9%) | **0** |
+| HG00097#hap1 | 1,688 | 1,642 | 46 (2.7%) | **0** |
+| HG00408#hap1 | 1,693 | 1,638 | 55 (3.2%) | **0** |
+
+`extra = 0` is the hard invariant — within a window the search is exhaustive, so a site can only be missed by falling outside every window, never mis-reported inside one. The 2.7–3.9% missed sits comfortably inside the ~8% unanchored envelope Phase 4 measured, and every one was an incidental ≤3-mismatch hit: **the demo verify matrix is identical to the golden, 0 differences across all 12 cells.**
+
+### Two implementation findings worth keeping
+
+**1. Window inflation nearly killed the phase.** The first working version reused `anchor_grid.window_for`, which spans every anchor within 50 kb. That turned 1,669 candidate regions into **212 Mb** per haplotype and left the mode *no faster than scanning the whole genome* (18.5 s vs 18.1 s for 3 haplotypes). `lift_interval` — translation by the median anchor offset rather than a spanning window — cut it to 22.9 Mb.
+
+**2. Per-window calls cost more than the scanning.** Even at 22.9 Mb the mode took 4.5 s/haplotype, because the comparator rebuilds its primer seed index on every call and there were 1,616 windows. Concatenating all windows into one sequence (separated by `N` runs, with boundary-spanning hits rejected explicitly) took it to 0.9 s. **The scanning itself was never the cost — the per-call fixed overhead was.**
+
+Both were found by measuring rather than reasoning, and neither was visible in the correctness results: the mode was fully correct and pointless at the same time.
+
+### Recommendation on when to use it
+
+At N=3 this saves ~10 s and costs a ~3% blind spot — not worth it, which is why `exhaustive` remains the default. At N=464 it is 47.9 min → 7.3 min. **But note the interaction with hardware:** on a many-core host where the exhaustive path can be fanned out across haplotypes, exhaustive at 464 is only a few minutes anyway, and then `chm13-once` buys little for a real loss of recall. Prefer it on a single constrained machine; prefer `exhaustive` wherever you can distribute.
+
 ---
 
-## Phase 6 — Pangenome index spike → **recommend not running it**
+## ~~Phase 6~~ — Pangenome index spike: **dropped, not run** (decision record)
 
-**Model: Opus** for evaluation and the eventual build; **Sonnet** for harness scaffolding.
+**This phase has been removed from the plan.** It is retained here as a record of what was considered and why it was rejected, because "we evaluated this and declined" is worth more to a future reader than silence — and because the decision should be revisited if the premises below change.
 
-The original plan: a time-boxed spike on ~20 haplotypes across Movi/r-index, `vg` GBZ + giraffe, and "Phases 1–5 only", committing only on evidence. That framing listed "no new index at all" as a valid documented outcome. **On the evidence now available, that is the outcome — take it without spending the spike.**
+The original plan: a time-boxed spike on ~20 haplotypes across Movi/r-index, `vg` GBZ + giraffe, and "Phases 1–5 only", committing only on evidence. That framing listed "no new index at all" as a valid documented outcome. **On the evidence now available, that is the outcome — taken without spending the spike.**
 
 ### Why the premise expired
 
@@ -440,11 +473,11 @@ The binding constraint on 16 GB is the one-time grid build, not the pipeline. It
 | 4 — Anchor grid | **Opus** | Sampling-density and precision judgement | 3 |
 | 4.5 — Segfault (ISSUE-001) | **Opus** | Memory-safety debugging across the PyO3/rayon boundary | — (blocks 5) |
 | 5 — CHM13-once | **Opus** | Core insight + correctness envelope | — (needs 4, 4.5) |
-| 6 — Pangenome spike | — | **Recommended not to run**; premise expired and the spike can only produce a false positive at 16 GB | — |
+| ~~6 — Pangenome spike~~ | — | **Dropped, not run.** Premise expired (search 47.3 s → 6.0 s, storage 15 GB → 0.91 GB) and a 20-haplotype spike on 16 GB could only produce a non-extrapolating false positive. Kept as a decision record. | — |
 
 Every phase brief must carry: the backend contract above, the relevant `file:line` seams, its gate, and the standing instruction **not to delete genome data**.
 
-**Status after Phase 4 (2026-07-25):** Phases 0–4 landed and gated. Phase 4.5 is the only blocker. Phase 5 is worth building as an opt-in mode but is not on the critical path for a 3-haplotype workload. Phase 6 is closed as "Phases 1–5 are sufficient" — the outcome its own charter listed as valid.
+**Status after Phase 5 (2026-07-25):** Phases 0–5 landed and gated. Phase 4.5 (ISSUE-001) remains the only open blocker. Phase 6 is dropped — "Phases 1–5 are sufficient", the outcome its own charter listed as valid — and retained only as a decision record.
 
 ---
 

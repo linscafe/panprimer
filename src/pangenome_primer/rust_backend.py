@@ -128,6 +128,26 @@ def find_binding_sites_batch(
     return {seq: _to_sites(seq, haplotype_id, tups) for seq, tups in raw.items()}
 
 
+def find_binding_sites_in_seq_batch(
+    seqs: list[str],
+    ref: str,
+    haplotype_id: str,
+    chrom: str,
+    max_mismatches: int,
+) -> dict[str, list[BindingSite]]:
+    """All primers against one in-memory sequence, in a single pass.
+
+    The batch form exists for `chm13_once`, which scans many extracted windows: the
+    per-primer entry point would re-traverse each window once per primer, and the underlying
+    `scan_seq` already accepts a list. Coordinates are relative to `ref`, so the caller must
+    offset them if `ref` is a slice of a larger contig.
+    """
+    if _ext is None:  # pragma: no cover - guarded by callers
+        raise RuntimeError("pangenome_primer._scan is not available")
+    raw = _ext.scan_seq(list(seqs), ref, int(max_mismatches), chrom)
+    return {s: _to_sites(s, haplotype_id, raw.get(s, [])) for s in set(seqs)}
+
+
 def find_binding_sites_in_seq(
     primer_name: str,
     primer_seq: str,
