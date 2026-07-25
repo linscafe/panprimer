@@ -116,9 +116,9 @@ which is the benign direction.
    `Decompress` per worker via `reset()` removes both the large frame and the per-block
    allocation. Likely a small throughput win as well.
 3. **De-nest the two parallel regions.** Worth doing independently: the scan currently uses
-   **738% of a possible 1600% CPU** because inflate and scan alternate rather than overlap
-   (see Phase 6 notes in `implementation-plan.md`). Pipelining them addresses the stack
-   depth *and* is the largest remaining performance item.
+   **738% of a possible 1600% CPU** because inflate and scan alternate rather than overlap.
+   Pipelining them addresses the stack depth *and* is the largest remaining performance
+   item.
 
 ### Verification before closing
 

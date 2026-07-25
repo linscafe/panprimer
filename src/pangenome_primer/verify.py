@@ -116,26 +116,10 @@ def run_verify(
     # KeyError, so a user's pinned defaults.yaml keeps working.
     max_sites = raw["search"].get("max_binding_sites", EvalConfig.max_binding_sites)
     backend = backend_from_config(raw, warn=progress)
-    scope = str(raw["search"].get("scope", "exhaustive")).strip().lower()
-    if scope not in ("exhaustive", "chm13-once"):
-        raise ValueError(
-            f"unknown search.scope {scope!r}; expected 'exhaustive' or 'chm13-once' "
-            f"(see config/defaults.yaml)"
-        )
     tm_opt = cfgmod.design_config(raw).tm_opt
 
     haplos = load_haplotypes(samples_tsv)
     all_seqs = [s.forward for s in specs] + [s.reverse for s in specs]
-
-    # CHM13-once: one reference scan for the whole run, replacing N haplotype scans. Built
-    # here rather than inside the loop precisely so it is paid once.
-    searcher = None
-    if scope == "chm13-once":
-        from .chm13_once import Chm13OnceSearcher
-
-        searcher = Chm13OnceSearcher(
-            all_seqs, chm13_fasta, max_mm, backend=backend, progress=progress
-        )
 
     # Resolve each pair's target + build its eval config ONCE (independent of haplotype).
     chm = pysam.FastaFile(chm13_fasta)
@@ -168,18 +152,9 @@ def run_verify(
     for hid, fasta in haplos:
         fa = pysam.FastaFile(fasta)
         truncated: dict[str, int] = {}
-        if searcher is not None:
-            sites, stats = searcher.sites_for(fasta, hid, fa=fa)
-            progress(
-                f"  {hid}: {stats['windows']} window(s), "
-                f"{stats['scanned_bp'] / 1e6:.1f} Mb scanned"
-                + (f", {stats['unanchored_regions']} region(s) unanchored"
-                   if stats["unanchored_regions"] else "")
-            )
-        else:
-            progress(f"genome-wide search ({backend}) on {hid} ...")
-            sites = find_binding_sites_batch(all_seqs, fasta, hid, max_mm, fa=fa,
-                                             backend=backend, truncated=truncated)
+        progress(f"genome-wide search ({backend}) on {hid} ...")
+        sites = find_binding_sites_batch(all_seqs, fasta, hid, max_mm, fa=fa,
+                                         backend=backend, truncated=truncated)
         aligner = make_aligner(fasta) if needs_whole_genome_aligner(fasta) else None
         for (spec, chrom, start, end, tstart, tend, expected_size, template, pair, ecfg) in pctx:
             proj = project_target(chrom, tstart, tend, template, fasta, aligner=aligner, fa=fa)

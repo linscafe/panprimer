@@ -1,7 +1,7 @@
 """Characterization tests for `binding.find_binding_sites_naive` (Phase 0 safety net).
 
 These pin down the contract `binding.py`'s module docstring declares and that
-`docs/implementation-plan.md` names explicitly, since this backend is the reference every
+the backend contract names explicitly, since this backend is the reference every
 future backend (rust, anchor-lift, pangenome index) is compared against:
 
   1. `chrom`/`start`/`end` are haplotype genome coordinates.

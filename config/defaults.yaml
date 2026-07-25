@@ -28,18 +28,6 @@ search:
                              # Python, small references only; auto = same chain as rust.
                              # rust/auto fall back to bwa (with a warning) where the
                              # compiled extension isn't installed. See search.py.
-  scope: exhaustive          # how much of each haplotype to search.
-                             # exhaustive = scan every base of every haplotype (default;
-                             # ~6 s/haplotype with backend=rust, and exact).
-                             # chm13-once = scan CHM13 once per run, lift the hits onto each
-                             # haplotype through its anchor grid, and search only those
-                             # windows -- ~1 Mb instead of 3.03 Gb per haplotype. Requires an
-                             # anchor grid per haplotype (`build-anchor-grid`).
-                             # TRADE-OFF: sequence absent from CHM13 is unreachable, ~8% of
-                             # each assembly (Phase 4 measured 91.7-92.2% of probes anchor),
-                             # and primers binding only there are reported `uncertain`.
-                             # Saves ~6 s x (N-1): ~12 s at N=3, ~46 min at N=464. Worth it
-                             # at scale, not worth the blind spot for a handful of haplotypes.
   max_binding_sites: 100     # cap on amplification-competent binding sites per primer.
                              # Above it, scanning stops and the cell reads ">100 binding
                              # sites" instead of enumerating products -- a primer binding

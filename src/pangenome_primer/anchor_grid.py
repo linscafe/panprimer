@@ -285,53 +285,6 @@ def window_for(
     return contig, max(0, lo), hi
 
 
-def lift_interval(
-    grid: Grid, chrom: str, start: int, end: int, *, pad: int = 5_000
-) -> tuple[str, int, int] | None:
-    """Tightly lift a CHM13 interval to a (contig, lo, hi) haplotype window, or None.
-
-    `window_for` is deliberately generous: it spans every nearby anchor so the true locus
-    cannot fall outside, which suits projection where one wide window per target is cheap.
-    That is the wrong shape for `chm13_once`, which lifts *thousands* of small regions --
-    there, a ~140 kb window per 4 kb region turned 1,669 regions into 212 Mb of sequence to
-    rescan, most of it the same neighbourhoods over and over.
-
-    This lifts by **translation, not interpolation**: for a collinear anchor the haplotype
-    coordinate is `t + (q_start - t_start)`, so extrapolating a few kb beyond a 1 kb probe
-    does not scale the error the way a fractional lift would. The median over all nearby
-    anchors is then robust to individual mis-placements, and the window is only as wide as
-    the interval plus `pad`.
-
-    A wrong window here costs recall, not correctness: the site is simply not found, which is
-    the same outcome as an unanchored region and already inside this mode's documented
-    envelope.
-    """
-    flank = max(2 * STEP_BP, pad)
-    near = grid.near(chrom, start, end, flank)
-    if not near:
-        return None
-    votes: dict[str, int] = {}
-    for a in near:
-        votes[a.q_contig] = votes.get(a.q_contig, 0) + 1
-    contig = max(votes, key=lambda c: votes[c])
-
-    preds: list[int] = []
-    for a in near:
-        if a.q_contig != contig:
-            continue
-        for t in (start, end):
-            if a.strand == "+":
-                preds.append(a.q_start + (t - a.t_start))
-            else:
-                preds.append(a.q_end - (t - a.t_start))
-    if not preds:
-        return None
-    preds.sort()
-    mid = preds[len(preds) // 2]
-    half = (end - start) // 2 + pad
-    return contig, max(0, mid - half), mid + half
-
-
 def project_from_grid(
     grid_file: str,
     chrom: str,

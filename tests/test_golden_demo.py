@@ -3,9 +3,8 @@
 `tests/golden/verify.json` and `tests/golden/results.json` are frozen copies of
 `demo-verify-pipeline/verify.json` and `demo-design-pipeline/gapdh/results.json` -- the
 existing, human-reviewed demo output. `golden_compare.py` diffs a fresh run's output
-against them cell for cell. This is the gate `docs/implementation-plan.md` and
-`docs/plan-optimization.md` both name explicitly: any future backend/storage change must
-reproduce this matrix exactly, including:
+against them cell for cell. This is the gate every backend and storage change must clear:
+the regenerated matrix must reproduce the frozen one exactly, including:
 
 * `CYP2D6_paralog` in verify.json -- the CYP2D7-off-target row (status `multi_product`,
   an off-target product alongside the correct one on every haplotype).

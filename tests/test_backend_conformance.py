@@ -1,7 +1,7 @@
 """Backend-conformance suite (Phase 0 safety net).
 
 Every binding-search backend must satisfy the contract in `binding.py`'s module docstring
-(mirrored in `docs/implementation-plan.md`'s "seams" table): haplotype-genome coordinates,
+(the backend contract): haplotype-genome coordinates,
 `end - start == len(primer)`, 3'-end-relative `mismatch_offsets_3p`, correct `strand`, and
 (for backends that only prune, like `bwa_backend`) it is fine to return a SUPERSET of the
 true positions since `binding.find_binding_sites_naive` re-scores every candidate window.
