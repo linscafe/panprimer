@@ -282,6 +282,42 @@ Measured basis: HPRC R2 assemblies are near-chromosome-level — 26 contigs ≥1
 
 **Gate:** projected loci match the current `.mmi` path within a few bp on the demo loci; `.mmi` files (~27 GB) become deletable.
 
+### Phase 4 measured (2026-07-25, HG00097_hap1)
+
+| | `.mmi` | anchor grid | change |
+|---|---:|---:|---:|
+| on-disk size | 5.80 GB | **4.31 MB** | **1,345× smaller** |
+| build time | ~25 min | **9 min 19 s** | 2.7× faster |
+| index load per haplotype | **260.7 s** | none | — |
+| projection, 5 demo targets | 0.36 s | 2.11 s | — |
+| **total to project 5 targets** | **261 s** | **2.1 s** | **124× faster** |
+
+303,322 probes → 279,556 anchors (**92.2% anchored**; 7.8% unanchored, the figure Phase 5 needs).
+
+**Accuracy: exact.** All five demo targets — the four verify pairs plus the GAPDH design locus — projected to the **same contig and the same start/end, 0 bp difference**. Not "within a few bp" as the gate allowed; identical. That is expected rather than lucky: the grid only chooses *which* window to align, and the coordinate still comes from the same base-level `asm5` alignment of the same template, so agreement is the design working rather than a coincidence to be relied on blindly.
+
+**The 260.7 s index load explains the Phase 2 baseline puzzle.** The earlier correction noted that end-to-end verify cost ~5.7 min/haplotype while search was only 47.3 s, and attributed the remainder to "projection". This measurement localises it precisely: it was almost entirely the one-time `.mmi` load, not the projections themselves (0.36 s for five targets). Removing the load — not making projection cleverer — is where the time goes.
+
+**Safety property.** A grid error cannot silently move a locus. The window is a hypothesis; the realignment inside it is the test. A bad window fails to align and the haplotype reports `uncertain` — the same outcome as a failed whole-genome projection. `tests/test_anchor_grid.py::test_window_miss_reports_uncertain_not_wrong_locus` feeds a deliberately mis-pointed grid and asserts no locus comes back.
+
+**`window_for` hardening.** Majority vote over nearby anchors settles the haplotype contig, but cannot catch a probe that mis-placed *within* the correct contig (tandem repeat, segmental duplication); min/max over the survivors would then stretch the window across everything in between. Outliers are now dropped against the median first, with a threshold an order of magnitude beyond the anchors requested so genuine large indels survive.
+
+### All three demo haplotypes
+
+| haplotype | probes | anchored | grid size | build |
+|---|---:|---:|---:|---:|
+| HG00097#hap1 | 303,322 | 279,556 (92.2%) | 4.31 MB | 9m19s |
+| HG01884#hap1 | 303,723 | 279,560 (92.0%) | 4.35 MB | ~7m |
+| HG00408#hap1 | 304,831 | 279,601 (91.7%) | 4.31 MB | ~7m |
+
+The anchored fraction is strikingly consistent (91.7–92.2%), and the ~8% that does not place is the expected repeat/segdup/subtelomeric content where a 1 kb probe cannot map uniquely at MAPQ ≥ 30. **Phase 5 should treat that ~8% as the fraction of each haplotype CHM13-once discovery cannot reason about**, and it is stable enough across haplotypes to plan around.
+
+**Reclaimed 17.43 GB** — all three per-haplotype `.mmi`. `hprc-r2/assemblies/` is now **8.4 GB**, from 114 GB at the start of Phase 3: a **93% reduction**, with 107 GB freed across Phases 3 and 4.
+
+> **`hprc-r2/references/chm13v2.0.asm5.mmi` (5.9 GB) is deliberately retained.** It is not a per-haplotype artifact — it is the shared index every grid build maps its probes against, and the reason the scheme scales to 464 haplotypes. Deleting it would block all future grid builds and cost ~25 min to rebuild.
+
+**Deletion guard.** Each `.mmi` was removed only after confirming that haplotype's grid existed and was non-empty. The first attempt derived the grid name from the `.fa` stem while grids are named for the `.fa.gz`; the guard refused to delete anything rather than proceed on an unverified check. Worth preserving that bias in later phases — the guard was wrong about the path but right about what to do when unsure.
+
 ---
 
 ## Phase 5 — CHM13-once candidate discovery

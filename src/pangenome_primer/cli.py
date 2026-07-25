@@ -626,5 +626,48 @@ def fetch_subset_cmd(sample_ids, fetch_all, per_superpop, data_dir, out_path,
                    "to pull the assemblies before `run`/Nextflow.")
 
 
+@cli.command(name="build-anchor-grid")
+@click.option("--samples", "samples_tsv", required=True, help="haplotype subset TSV")
+@click.option("--chm13-mmi", required=True,
+              help="shared CHM13 minimap2 index (built once, reused by every haplotype)")
+@click.option("--threads", default=4, show_default=True,
+              help="minimap2 threads; peak RAM scales with this")
+@click.option("--force", is_flag=True, default=False,
+              help="rebuild even when a grid already exists")
+def build_anchor_grid_cmd(samples_tsv, chm13_mmi, threads, force) -> None:
+    """Build the sparse projection anchor grid for each haplotype.
+
+    Replaces the 5.80 GB per-haplotype minimap2 index with a few MB of anchors. Probes are
+    mapped against the *shared* CHM13 index, so one large index serves every haplotype.
+    """
+    from pathlib import Path
+
+    from . import anchor_grid
+    from .samples import load_haplotypes
+
+    if not Path(chm13_mmi).exists():
+        raise click.ClickException(f"CHM13 index not found: {chm13_mmi}")
+
+    for hid, fasta in load_haplotypes(samples_tsv):
+        out = anchor_grid.grid_path(fasta)
+        if Path(out).exists() and not force:
+            click.echo(f"{hid}: grid present ({Path(out).stat().st_size / 1e6:.1f} MB); skip")
+            continue
+        click.echo(f"{hid}: building ...")
+        stats = anchor_grid.build_grid(
+            fasta, chm13_mmi, threads=threads, progress=lambda s: click.echo(s)
+        )
+        click.echo(
+            f"  {stats['anchors']:,}/{stats['probes']:,} probes anchored "
+            f"({stats['anchored_fraction']:.1%}), {stats['bytes'] / 1e6:.1f} MB -> {out}"
+        )
+        if stats["anchored_fraction"] < 0.5:
+            click.echo(
+                f"  WARNING: only {stats['anchored_fraction']:.1%} of probes placed. "
+                f"Projection will fall back to `uncertain` over much of this assembly.",
+                err=True,
+            )
+
+
 if __name__ == "__main__":
     cli()

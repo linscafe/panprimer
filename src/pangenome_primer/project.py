@@ -63,6 +63,25 @@ def _aligner(fasta: str, preset: str):
     return mappy.Aligner(fasta, preset=preset)
 
 
+def needs_whole_genome_aligner(hap_fasta: str) -> bool:
+    """True when projection has no cheap route and must index the whole assembly.
+
+    Callers build the aligner *eagerly*, before looping over targets, so they need to know
+    which route `project_target` will take before calling it. Keeping that decision here
+    means the two cannot drift apart -- if they did, the caller would load a 5.80 GB `.mmi`
+    that `project_target` then ignores, wasting the memory the grid exists to save without
+    changing any output.
+    """
+    from pathlib import Path
+
+    from . import align_cache, anchor_grid
+
+    return not (
+        Path(align_cache.paf_path(hap_fasta)).exists()
+        or Path(anchor_grid.grid_path(hap_fasta)).exists()
+    )
+
+
 def make_aligner(fasta: str, preset: str = "asm5"):
     """Public builder for a reusable haplotype aligner. Loading the (multi-GB) index is the
     expensive part; callers that project many targets against one haplotype should build it
@@ -162,19 +181,33 @@ def project_target(
     aligner=None,
     fa=None,
 ) -> Projection:
-    """Project a CHM13 target interval onto a haplotype. Prefers the whole-genome PAF cache
-    (a fast coordinate lift; see align_cache) and falls back to on-the-fly alignment of the
-    template sequence when no cache exists. Pass a prebuilt `aligner` (see make_aligner) to
-    reuse one index load across many targets on the same haplotype. Pass an already-open `fa`
-    (pysam.FastaFile on `haplotype_fasta`) to reuse a handle across many targets on the PAF-
-    lift path too; the caller retains ownership. Both default to None (open as before)."""
+    """Project a CHM13 target interval onto a haplotype, by the cheapest route available.
+
+    Three routes, in preference order:
+
+    1. **whole-genome PAF cache** — a pure coordinate lift, no alignment (see `align_cache`);
+    2. **sparse anchor grid** — bracket the target between anchors, then align the template
+       against just that window in memory (see `anchor_grid`). A few MB per haplotype
+       instead of a 5.80 GB `.mmi`;
+    3. **whole-haplotype alignment** — the original path, which needs an index of the entire
+       assembly and is what routes 1 and 2 exist to avoid.
+
+    Pass a prebuilt `aligner` (see `make_aligner`) to reuse one index load across many
+    targets on route 3. Pass an already-open `fa` (pysam.FastaFile on `haplotype_fasta`) to
+    reuse a handle across routes 1 and 2; the caller retains ownership. Both default to None.
+    """
     from pathlib import Path
 
-    from . import align_cache
+    from . import align_cache, anchor_grid
 
     paf = align_cache.paf_path(haplotype_fasta)
     if Path(paf).exists():
         return align_cache.project_from_paf(paf, chrom, tstart, tend, haplotype_fasta, fa=fa)
+    grid = anchor_grid.grid_path(haplotype_fasta)
+    if Path(grid).exists():
+        return anchor_grid.project_from_grid(
+            grid, chrom, tstart, tend, template_seq, haplotype_fasta, fa=fa
+        )
     return project_locus(template_seq, haplotype_fasta, aligner=aligner)
 
 

@@ -15,9 +15,9 @@ Try it: run the bundled demo (GAPDH across 3 HPRC haplotypes, ~9 min) with `bash
 
 > [!WARNING]
 > **First-time data setup is heavy — plan ahead.** Before the demo or any real run you must download and index the genome data once (see [Setup](#setup) and [Get the data](#get-the-data)): the multi-GB downloads plus `minimap2` indexing of ~3 Gb assemblies is a **one-time job that takes hours** (often best left running overnight).
-> - **Storage:** ~29 GB for the 3-haplotype demo — about **6.7 GB per haplotype** (the 0.90 GB BGZF `.fa.gz` HPRC ships, its `.fai`/`.gzi`, and a 5.8 GB minimap2 projection index) plus **~8.5 GB** for the CHM13 reference.
->   The genome-wide search reads the compressed FASTA directly, so neither the 3.08 GB uncompressed `.fa` nor a 5.31 GB `bwa` index is built. Setting `WITH_BWA=1` restores both — needed only for the legacy `search.backend: bwa` — and puts this back at ~15 GB per haplotype.
-> - **Memory:** up to **~12 GB RAM** at peak (one genome index in memory at a time).
+> - **Storage:** ~11 GB for the 3-haplotype demo — about **0.91 GB per haplotype** (the 0.90 GB BGZF `.fa.gz` HPRC ships, its `.fai`/`.gzi`, and a ~4 MB projection anchor grid) plus **~8.5 GB** for the CHM13 reference and its shared index.
+>   The genome-wide search reads the compressed FASTA directly and projection uses the anchor grid, so none of the 3.08 GB uncompressed `.fa`, the 5.31 GB `bwa` index, or the 5.80 GB per-haplotype minimap2 index is built. Setting `WITH_BWA=1` restores the first two — needed only for the legacy `search.backend: bwa` — and puts this back at ~15 GB per haplotype.
+> - **Memory:** ~1 GB at peak for search and projection. The one-time anchor-grid build loads the shared CHM13 index and peaks around **~11 GB**.
 
 **New here?** Start with the plain-language introductions: [design pipeline](docs/intro_design_pipeline.md) · [verify pipeline](docs/intro_verify_pipeline.md) (they explain what a pangenome is and why the pipelines work the way they do).
 
@@ -63,13 +63,15 @@ curl -O https://human-pangenomics.s3.amazonaws.com/T2T/CHM13/assemblies/analysis
 gunzip chm13v2.0.fa.gz && samtools faidx chm13v2.0.fa
 ```
 
-**Prepare the haplotypes** (download → md5 → `faidx` on the BGZF → minimap2 projection index). Building the projection index for a ~3 Gb assembly takes tens of minutes at ~5 GB RAM, so for the full subset run this unattended — it is resumable and logs to `hprc-r2/prepare.log`:
+**Prepare the haplotypes** (download → md5 → `faidx` on the BGZF → projection anchor grid). The anchor grid takes ~9 min per ~3 Gb assembly, so for the full subset run this unattended — it is resumable and logs to `hprc-r2/prepare.log`:
 
 ```bash
 bash scripts/prepare_haplotypes.sh
 ```
 
-The assemblies stay compressed: the search backend streams the BGZF and `pysam` random-accesses it through the `.fai`/`.gzi` pair. Prefix with `WITH_BWA=1` only if you need the legacy `search.backend: bwa`, which additionally decompresses each assembly and runs a ~55 min `bwa index` per haplotype.
+The assemblies stay compressed: the search backend streams the BGZF and `pysam` random-accesses it through the `.fai`/`.gzi` pair. Projection uses a **sparse anchor grid** — ~1 kb probes sampled every 10 kb and mapped against the *shared* CHM13 index, so one large index serves every haplotype instead of a 5.8 GB one each. The grid is ~4 MB and locates a target to within a few kb; the exact coordinate still comes from a base-level realignment of that window, so accuracy is unchanged.
+
+Prefix with `WITH_BWA=1` only if you need the legacy `search.backend: bwa`, which additionally decompresses each assembly and runs a ~55 min `bwa index` per haplotype.
 
 This is the local bottleneck; the containerized Nextflow `container` profile is the scale-out path when you outgrow one machine.
 

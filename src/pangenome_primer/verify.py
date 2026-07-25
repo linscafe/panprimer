@@ -13,7 +13,12 @@ from . import config as cfgmod
 from .classify import pair_tm
 from .engine import EvalConfig, evaluate_with_sites
 from .model import Primer, PrimerPair
-from .project import make_aligner, project_target, resolve_target
+from .project import (
+    make_aligner,
+    needs_whole_genome_aligner,
+    project_target,
+    resolve_target,
+)
 from .samples import load_haplotypes
 
 # target column aliases accepted in the CSV header (case-insensitive)
@@ -100,11 +105,8 @@ def run_verify(
     pad: int = 250,
     progress=lambda s: None,
 ) -> list[VerifyRow]:
-    from pathlib import Path
-
     import pysam
 
-    from . import align_cache
     from .search import backend_from_config, find_binding_sites_batch
 
     raw = cfgmod.load_raw(config_path)
@@ -153,7 +155,7 @@ def run_verify(
         truncated: dict[str, int] = {}
         sites = find_binding_sites_batch(all_seqs, fasta, hid, max_mm, fa=fa,
                                          backend=backend, truncated=truncated)
-        aligner = None if Path(align_cache.paf_path(fasta)).exists() else make_aligner(fasta)
+        aligner = make_aligner(fasta) if needs_whole_genome_aligner(fasta) else None
         for (spec, chrom, start, end, tstart, tend, expected_size, template, pair, ecfg) in pctx:
             proj = project_target(chrom, tstart, tend, template, fasta, aligner=aligner, fa=fa)
             if proj.locus is None:

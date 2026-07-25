@@ -128,7 +128,7 @@ workflow {
             // filter every optional sidecar (a PAF that was never built, the bwa index on a
             // lean BGZF-only checkout) would be staged as a broken symlink and fail the task.
             def stem = fa.toString().replaceFirst(/\.gz$/, '')
-            def idx = ['fai','gzi','mmi','chm13.paf','amb','ann','bwt','pac','sa']
+            def idx = ['fai','gzi','anchors.tsv.gz','mmi','chm13.paf','amb','ann','bwt','pac','sa']
                         .collectMany { files("${fa}.${it}") + files("${stem}.${it}") }
                         .findAll { it.exists() }
                         .unique()

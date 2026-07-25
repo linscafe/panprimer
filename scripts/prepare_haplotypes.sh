@@ -100,12 +100,17 @@ grep -vE '^#|^sample\b' "$TSV" | while IFS=$'\t' read -r sample hap superpop loc
   src="$gz"; [ -s "$fa" ] && src="$fa"
   paf="$src.chm13.paf"; [ -s "$fa.chm13.paf" ] && paf="$fa.chm13.paf"
   mmi="$src.mmi";       [ -s "$fa.mmi" ]       && mmi="$fa.mmi"
-  # Default = a cheap, memory-safe minimap2 index (.mmi) that the per-query projection
-  # loads in seconds. The whole-genome PAF (instant per-query lift, but a ~1-2 hr, >15 GB
-  # alignment per haplotype) is opt-in via BUILD_PAF=1 and only worth it on high-RAM /
-  # cloud. project_target prefers a PAF when present, else the .mmi.
+  grid="$src.anchors.tsv.gz"; [ -s "$fa.anchors.tsv.gz" ] && grid="$fa.anchors.tsv.gz"
+  # Default = the sparse anchor grid (a few MB): probes mapped against the SHARED CHM13
+  # index, so one big index serves every haplotype instead of one 5.80 GB .mmi each.
+  # project_target prefers a PAF, then the grid, then a whole-haplotype .mmi. The .mmi
+  # branch survives only for the case where no CHM13 index is available to build a grid
+  # against; it is no longer the normal path. The whole-genome PAF (instant per-query lift,
+  # but a ~1-2 hr, >15 GB alignment per haplotype) stays opt-in via BUILD_PAF=1.
   if [ -s "$paf" ]; then
     log "$id projection PAF present"
+  elif [ -s "$grid" ]; then
+    log "$id anchor grid present ($(( $(stat -c%s "$grid") / 1000000 )) MB)"
   elif [ "${BUILD_PAF:-0}" = "1" ] && [ -s "${CHM13_MMI:-/nonexistent}" ]; then
     # whole-genome alignment: memory scales with threads. MM_THREADS=4 fits 15 GB; bump it
     # on high-RAM / cloud. This is the instant-per-query-lift path (item 1) at scale.
@@ -116,8 +121,20 @@ grep -vE '^#|^sample\b' "$TSV" | while IFS=$'\t' read -r sample hap superpop loc
     if minimap2 -c -x asm5 -t "${MM_THREADS:-4}" --secondary=no -K 100M "$CHM13_MMI" "$src" > "$paf.part" 2>>"$LOG"; then
       mv "$paf.part" "$paf"; log "$id PAF done ($(( ($(date +%s)-t0)/60 )) min)"
     else log "$id PAF FAILED"; rm -f "$paf.part"; fi
+  elif [ -s "${CHM13_MMI:-/nonexistent}" ]; then
+    t0=$(date +%s); log "$id anchor grid (-t ${MM_THREADS:-4}) ..."
+    # build_grid writes to <out>.part and renames, so an interrupted build leaves no
+    # half-written grid that would load as a sparse one and quietly mis-project.
+    if python -c "
+import sys
+from pangenome_primer import anchor_grid
+s = anchor_grid.build_grid(sys.argv[1], sys.argv[2], sys.argv[3], threads=int(sys.argv[4]))
+print(f\"  {s['anchors']}/{s['probes']} anchored ({s['anchored_fraction']:.1%}), {s['bytes']/1e6:.1f} MB\")
+" "$src" "$CHM13_MMI" "$grid" "${MM_THREADS:-4}" >>"$LOG" 2>&1; then
+      log "$id anchor grid done ($(( ($(date +%s)-t0)/60 )) min)"
+    else log "$id ANCHOR GRID FAILED"; rm -f "$grid.part"; fi
   elif [ ! -s "$mmi" ]; then
-    t0=$(date +%s); log "$id minimap2 -d (projection index) ..."
+    t0=$(date +%s); log "$id minimap2 -d (projection index; no CHM13 index for a grid) ..."
     # write to .part then rename so an interrupted build never leaves a truncated .mmi that
     # loads as an empty aligner (would turn every projection uncertain)
     if minimap2 -x asm5 -d "$mmi.part" "$src" 2>>"$LOG"; then
