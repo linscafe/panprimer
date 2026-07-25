@@ -226,6 +226,22 @@ Verified prerequisite: the HPRC-distributed `.fa.gz` is **already BGZF** (`BC` s
 
 **Gate:** full demo run from a `.fa.gz`-only haplotype directory reproduces the golden output. **Only after this gate passes** may the `.fa`, `.bwt`, `.sa`, `.pac`, `.amb`, `.ann` files be deleted (~28.7 + 49.4 GB).
 
+### Phase 3 in progress — three corrections to the plan above
+
+**1. Repointing `local_path` silently breaks every projection sidecar.** `project.py:55` and `align_cache.py:23` derived `.mmi` and `.chm13.paf` paths by plain string append on `local_path`. Changing that path from `X.fa` to `X.fa.gz` makes them look for `X.fa.gz.mmi` / `X.fa.gz.chm13.paf`, miss, and fall through to `mappy.Aligner(X.fa.gz)` — building a whole-genome minimap2 index **in-process, per haplotype, per run**. This does not raise; it produces correct answers minutes-per-haplotype slower, so no output-comparing test would catch it. Fixed by `samples.sidecar_path(seq_path, suffix)`, which prefers an exact-named sidecar, then the `.gz`-stripped stem, then falls back to the input path for writers. Pinned by `tests/test_sidecar_path.py` (6 tests), which asserts on the **resolved path**, not on run output, because the failure mode is performance rather than correctness.
+
+**2. `collectMany { files(...) }` does *not* skip missing siblings** — the claim in the bullet above is wrong. For a pattern containing no glob metacharacter, Nextflow's `files()` returns the literal path whether or not anything exists there, so every absent sidecar would be staged as a broken symlink. This is a **pre-existing** bug, not one Phase 3 introduces: `.chm13.paf` has never been built for any haplotype, so it was already in the staging list as a phantom. Fixed with `.findAll { it.exists() }`. Caught by executing the closure against the real `samples.tsv` rather than relying on `nextflow run --help` parsing the file.
+
+**3. `.mmi` must keep being built until Phase 4 lands.** The bullet "stop building bwa indexes and `.mmi`" conflates two phases. Projection has no replacement until the anchor grid exists, so dropping `.mmi` now would trigger exactly the in-process index build described in (1). `prepare_haplotypes.sh` therefore still builds a `.mmi` — now from the BGZF, which `minimap2` reads directly — and only the `.fa` + bwa index become opt-in (`WITH_BWA=1`). The staging list is `['fai','gzi','mmi','chm13.paf','amb','ann','bwt','pac','sa']` filtered by existence, not `['fai','gzi']`; it narrows to that naturally as the artifacts stop being produced.
+
+**4. The shared CHM13 bwa index is not needed at all.** The bullet above budgets ~55 min and ~5.3 GB for it. Nothing in the codebase asks for one: CHM13 is used for anchoring and template fetch, both `minimap2`/`pysam` operations, and `grep` finds no `bwa`/`ensure_index`/`find_binding_sites` call taking a CHM13 path. It was a carry-over from when `bwa` was the only search backend. Dropped — this is 55 minutes and 5.3 GB the phase does not have to spend. Revisit only if Phase 5 (CHM13-once discovery) turns out to want a genome index on the reference, in which case the `rust` scanner already covers it index-free.
+
+**Measured staging cost per haplotype (via the closure probe):** 11.13 GB of sidecars today (`.fai .mmi .amb .ann .bwt .pac .sa`), or 5.3 GB for the four haplotypes with no `.mmi`. Post-repoint that is `.fa.gz` 0.90 GB + `.fai`/`.gzi` 0.76 MB.
+
+**Scope: 3 haplotypes.** All three manifests (`config/samples.tsv`, `demo-verify-pipeline/`, `demo-design-pipeline/`) are pinned to HG01884#hap1 / HG00097#hap1 / HG00408#hap1 — AFR/EUR/EAS. `config/samples.tsv` previously listed 10; it was trimmed because `nextflow.config` defaults `--samples` to it, so a bare `nextflow run main.nf` would otherwise fan out across every assembly on disk. The CLI's `--samples` is `required=True`, so it never had this exposure. The 7 unlisted haplotypes remain on disk untouched; git history and `pangenome-primer fetch-subset` both restore the wider manifest.
+
+**Inventory (2026-07-25):** all 10 `.fa.gz` verified BGZF by magic-byte check. Only `HG00097_hap1` has a `.gzi`; 6 of 10 have `.fa.gz.fai`; 6 of 10 have `.mmi`; no haplotype has a `.chm13.paf`.
+
 ---
 
 ## Phase 4 — Sparse anchor grid (replaces `.mmi`)

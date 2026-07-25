@@ -87,12 +87,23 @@ def test_assess_resources_ok(monkeypatch, tmp_path):
     monkeypatch.setattr(hprc, "free_disk_gb", lambda p: 100.0)
     monkeypatch.setattr(hprc, "total_ram_gb", lambda: 16.0)
     rc = hprc.assess_resources(3, str(tmp_path))
-    assert (rc.download_gb, rc.indexed_gb) == (3.0, 45.0)  # 1 + 15 GB/hap
+    # Derived from the constants rather than hardcoded: the per-haplotype footprint is
+    # expected to fall as storage phases land (15.0 -> 6.7 with BGZF-only -> ~0.91 once the
+    # anchor grid replaces the .mmi), and this test is about the per-hap arithmetic, not the
+    # current figure.
+    assert (rc.download_gb, rc.indexed_gb) == (
+        3 * hprc.DOWNLOAD_GB_PER_HAP,
+        3 * hprc.INDEXED_GB_PER_HAP,
+    )
     assert rc.disk_ok and rc.ram_ok and not rc.risky
 
 
 def test_assess_resources_flags_shortfalls(monkeypatch, tmp_path):
-    monkeypatch.setattr(hprc, "free_disk_gb", lambda p: 20.0)  # < 45 + 8.5 CHM13
+    # Half of what 3 haplotypes + CHM13 need. Derived, not hardcoded: a fixed 20.0 GB stops
+    # being a shortfall once the per-haplotype footprint drops far enough, and the test would
+    # then pass for the wrong reason -- silently no longer exercising the failure path.
+    short = (3 * hprc.INDEXED_GB_PER_HAP + hprc.CHM13_GB) / 2
+    monkeypatch.setattr(hprc, "free_disk_gb", lambda p: short)
     monkeypatch.setattr(hprc, "total_ram_gb", lambda: 8.0)     # < 12 + 3 headroom
     rc = hprc.assess_resources(3, str(tmp_path))
     assert not rc.disk_ok and not rc.ram_ok and rc.risky

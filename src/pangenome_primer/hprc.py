@@ -25,8 +25,12 @@ DEMO_SAMPLES = ("HG01884", "HG00097", "HG00408")
 
 # rough per-haplotype footprints (see the README data-setup warning) used for the resource
 # check before a real download
-DOWNLOAD_GB_PER_HAP = 1.0     # compressed .fa.gz pulled now
-INDEXED_GB_PER_HAP = 15.0     # FASTA + bwa + minimap2 indexes after `prepare_haplotypes.sh`
+DOWNLOAD_GB_PER_HAP = 1.0     # compressed .fa.gz pulled now (0.90 GB measured)
+# After `prepare_haplotypes.sh`: the BGZF stays (0.90 GB), its .fai/.gzi cost <1 MB, and the
+# minimap2 projection index adds 5.80 GB. The 3.08 GB uncompressed .fa and the 5.31 GB bwa
+# index are no longer built -- they are opt-in via WITH_BWA=1, which returns this to ~15 GB.
+# Drops to ~0.91 once the anchor grid replaces the .mmi.
+INDEXED_GB_PER_HAP = 6.7
 CHM13_GB = 8.5                # one-time reference + its indexes
 PIPELINE_PEAK_GB = 12.0       # peak RAM: one genome index in memory at a time
 RAM_HEADROOM_GB = 3.0
