@@ -44,7 +44,7 @@ target region
     ▼
     │  (4) design candidates (Primer3) ── on the reference template, avoiding variable sites
     ▼
-    │  (5) search each primer genome-wide in every haplotype (bwa)
+    │  (5) search each primer genome-wide in every haplotype
     ▼
     │  (6) decide which binding sites actually work (thermodynamics, 3′-aware)
     ▼
@@ -65,7 +65,7 @@ target region
 
 **(4) Generate candidates.** We run **Primer3** (the standard primer-design engine — it handles Tm, GC content, hairpins, dimers, product size) on the reference template, with the variable sites excluded. Out come ~20 candidate forward/reverse pairs.
 
-**(5) Search genome-wide.** For each candidate we ask: *where in each haplotype could these primers bind?* We use **bwa** (a fast genome aligner) to find every binding site across the whole genome, allowing a few mismatches — not just at the target, but everywhere a paralog or repeat might lurk.
+**(5) Search genome-wide.** For each candidate we ask: *where in each haplotype could these primers bind?* A built-in scanner reads the whole genome and finds every binding site, allowing a few mismatches — not just at the target, but everywhere a paralog or repeat might lurk.
 
 **(6) Decide which sites actually amplify.** A binding site in a table is not the same as amplification. Using a **thermodynamic (nearest-neighbor) model** — the same physics that predicts melting temperature from sequence, salt, and Mg²⁺ — we ask whether each primer would *really* stay annealed and, critically, whether its **3′ end** is matched enough to extend. A mismatch in the last couple of bases is a hard "no."
 
@@ -118,5 +118,5 @@ The top pair is one you can order with real confidence that it will behave acros
 - **Off-target** — an extra/incorrect product from a paralog, pseudogene, or repeat.
 - **On-target coverage** — fraction of people in whom the target amplifies at all.
 - **Unique-product rate** — fraction in whom it's a single clean band (specificity).
-- **Primer3 / bwa** — standard tools for primer design / genome-wide sequence search.
+- **Primer3** — the standard tool for primer candidate design (Tm, GC, hairpins, dimers).
 - **In-silico PCR** — predicting products by pairing forward+reverse binding sites.

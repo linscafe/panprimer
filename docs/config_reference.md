@@ -31,8 +31,9 @@ Two thresholds are easy to confuse:
 
 | key | meaning |
 |---|---|
-| `backend` | *(Reserved — not yet wired.)* Intended to select the binding-site search engine. Today the engine picks automatically: `bwa` genome-wide on real assemblies, `naive` (pure-Python) for the in-memory/tiny-input path. |
-| `max_mismatches` | Search budget — bwa reports candidate sites with up to this many mismatches. This only widens the *net*; whether a site actually amplifies is decided by the `dropout` model, not by this number. |
+| `backend` | Which engine finds binding sites. `rust` (default) is the compiled scanner: it streams the BGZF `.fa.gz` directly, needs no index on disk, and is **exhaustive** — it proves every position either does or does not match within budget. `bwa` is the legacy path, kept selectable as the reference the `rust` backend was validated against; it needs the uncompressed `.fa` plus a ~5.3 GB index per haplotype (`WITH_BWA=1 bash scripts/prepare_haplotypes.sh`). `naive` is pure Python and refuses references above 50 Mb — a correctness reference for fixtures, not a genome-scale option. `auto` behaves like `rust`. `rust`/`auto` fall back to `bwa` with a warning when the compiled extension is not installed, so a platform without a wheel degrades rather than breaks. |
+| `max_mismatches` | Search budget — report candidate sites with up to this many mismatches. This only widens the *net*; whether a site actually amplifies is decided by the `dropout` model, not by this number. |
+| `max_binding_sites` | Cap on amplification-**competent** binding sites per primer. Above it the pair is not scored and the cell reads `>N binding sites`, because a primer binding that many places amplifies indiscriminately and enumerating its products is meaningless. `0` or null disables the cap. The default `100` comes from measured separation: well-behaved demo primers top out at 28 competent sites, while an Alu-repeat 20-mer has ~106,000. Values ≤28 would suppress the genuine CYP2D7 paralog row. |
 
 ---
 

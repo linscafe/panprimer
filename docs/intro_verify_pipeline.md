@@ -48,7 +48,7 @@ primers.csv
     ▼
     │  (2) project each target onto every haplotype ── the expected "correct" window per person
     ▼
-    │  (3) search all primers genome-wide in each haplotype (bwa) ── one pass covers every pair
+    │  (3) search all primers genome-wide in each haplotype ── one pass covers every pair
     ▼
     │  (4) keep binding sites that would truly amplify (thermodynamics, 3′-aware)
     ▼
@@ -61,7 +61,7 @@ primers.csv
 
 **(2) Project onto each haplotype.** For every person's genome we find the homologous window — the place where the *correct* product is expected. Anything the primers produce **there** is **on-target**; anything **elsewhere** is **off-target.** If the locus can't be confidently found in someone's assembly, that cell is **uncertain** (`?`).
 
-**(3) Search genome-wide.** Using **bwa**, we find everywhere each primer could bind in each haplotype — target and look-alikes alike. One genome-wide pass per haplotype covers **all** your primer pairs at once, so checking many pairs costs little more than checking one.
+**(3) Search genome-wide.** A built-in scanner reads each haplotype's compressed sequence straight through and finds everywhere each primer could bind — target and look-alikes alike. The search is **exhaustive**: every position is checked, so a site is never missed because a heuristic pruned it. One pass per haplotype covers **all** your primer pairs at once, so checking many pairs costs little more than checking one.
 
 **(4) Keep sites that really amplify.** As in the design pipeline, a binding site in a table isn't a product. A **thermodynamic, 3′-end-aware** model decides whether each primer would actually stay annealed and extend, filtering out the many harmless near-matches.
 
@@ -77,6 +77,7 @@ The primary deliverable is a **matrix** — one **row per primer pair**, one **c
 - **Red** number = an **off-target** product size (a spurious band).
 - Grey **dropout** = the primers do **not** make the correct product in that person (a binding-site variant killed it).
 - **`?`** = the locus couldn't be projected in that assembly (unknown, not a failure).
+- **`>100 binding sites`** = the primer binds in too many places to be worth scoring (a repeat-derived primer, e.g. one sitting on an *Alu* element). No product sizes are reported, because a primer that anneals in ~100,000 places amplifies indiscriminately and enumerating its bands would imply a precision that isn't there.
 
 Read a row left-to-right and you effectively see the gel you'd get across many people: all-green means a robust pair; a red here or a "dropout" there tells you precisely where — and in which population — the pair would let you down. A machine-readable **TSV/JSON** is written alongside.
 
@@ -90,7 +91,7 @@ Read a row left-to-right and you effectively see the gel you'd get across many p
 
 **Why accept GRCh38 coordinates for the target?** Because that's how existing primers are almost always documented. Meeting people where their data already lives lowers the barrier; we translate to the CHM13 ruler internally.
 
-**Why one genome-wide search for all pairs at once?** The expensive step is loading a whole genome's index into memory. Doing it **once per haplotype** and screening every primer against it makes the cost depend on the number of *genomes*, not the number of *primer pairs* — so screening a whole panel is nearly as cheap as screening one pair.
+**Why one genome-wide search for all pairs at once?** The expensive step is reading a whole genome, not comparing primers against it. Measured: scanning one haplotype takes ~5.8 s for a single primer and ~6.1 s for 128 — the cost is per *genome*, not per *primer pair*. Doing one pass per haplotype and screening every primer against it makes screening a whole panel nearly as cheap as screening one pair.
 
 **Why the thermodynamic, in-silico-PCR core (shared with the design pipeline)?** Same reasoning as design: a primer with many approximate genome-wide matches can still be perfectly specific, because a mismatched 3′ end won't extend and most "hits" have no partner primer pointing back. Predicting *products* from the actual chemistry — rather than counting raw sequence matches — is what makes the off-target calls trustworthy.
 
@@ -105,4 +106,4 @@ Read a row left-to-right and you effectively see the gel you'd get across many p
 - **Off-target product** — a spurious amplicon from a paralog/pseudogene/repeat (shown red).
 - **Dropout** — no correct product because a variant sits under a primer (usually near the 3′ end).
 - **In-silico PCR** — predicting products by pairing forward+reverse binding sites in silico.
-- **bwa** — a fast genome-wide sequence search tool, used to find primer binding sites.
+- **Binding-site search** — scanning a whole genome for every place a primer could anneal, allowing a few mismatches.
