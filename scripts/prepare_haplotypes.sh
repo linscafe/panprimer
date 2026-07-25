@@ -19,7 +19,12 @@ log "=== prepare_haplotypes start ($(nproc) cpus) TSV=$TSV ==="
 # CHM13 minimap2 index, built once, reused for every haplotype's projection PAF
 CHM13_MMI="${CHM13%.fa}.asm5.mmi"
 if [ -s "$CHM13" ] && [ ! -s "$CHM13_MMI" ]; then
-  log "building CHM13 asm5 index ..."; minimap2 -x asm5 -d "$CHM13_MMI" "$CHM13" 2>>"$LOG"
+  log "building CHM13 asm5 index ..."
+  if minimap2 -x asm5 -d "$CHM13_MMI.part" "$CHM13" 2>>"$LOG"; then
+    mv "$CHM13_MMI.part" "$CHM13_MMI"
+  else
+    log "CHM13 asm5 index FAILED"; rm -f "$CHM13_MMI.part"
+  fi
 fi
 # columns: sample hap superpop local_path md5 release population source_url genbank
 grep -vE '^#|^sample\b' "$TSV" | while IFS=$'\t' read -r sample hap superpop local_path md5 release population url genbank; do
@@ -31,21 +36,33 @@ grep -vE '^#|^sample\b' "$TSV" | while IFS=$'\t' read -r sample hap superpop loc
   # 1) download
   if [ ! -s "$gz" ] && [ ! -s "$fa" ]; then
     log "$id downloading ..."
-    if curl -fsS -o "$gz.part" "$url"; then mv "$gz.part" "$gz"; else log "$id DOWNLOAD FAILED"; continue; fi
+    if curl -fsS -o "$gz.part" "$url"; then mv "$gz.part" "$gz"; else log "$id DOWNLOAD FAILED"; rm -f "$gz.part"; continue; fi
   fi
   # 2) md5 check against the pinned manifest value (only if we still have the .gz)
   if [ -s "$gz" ] && [ "${md5:-PENDING}" != "PENDING" ]; then
     got=$(md5sum "$gz" | cut -d' ' -f1)
     [ "$got" = "$md5" ] && log "$id md5 ok" || log "$id MD5 MISMATCH got=$got want=$md5"
   fi
-  # 3) gunzip
-  if [ ! -s "$fa" ]; then log "$id gunzip ..."; gunzip -kf "$gz" || { log "$id GUNZIP FAILED"; continue; }; fi
+  # 3) gunzip (writes $fa directly; no rename step, so remove it on failure too)
+  if [ ! -s "$fa" ]; then
+    log "$id gunzip ..."
+    gunzip -kf "$gz" || { log "$id GUNZIP FAILED"; rm -f "$fa"; continue; }
+  fi
   # 4) faidx
-  if [ ! -s "$fa.fai" ]; then log "$id faidx ..."; samtools faidx "$fa"; fi
-  # 5) bwa index (genome-wide off-target search; the slow step)
+  if [ ! -s "$fa.fai" ]; then
+    log "$id faidx ..."
+    samtools faidx "$fa" || { log "$id FAIDX FAILED"; rm -f "$fa.fai"; continue; }
+  fi
+  # 5) bwa index (genome-wide off-target search; the slow step). bwa writes .bwt/.sa/.pac/
+  # .amb/.ann directly (no single renameable output), so on failure remove all of them —
+  # otherwise a partial .bwt would look "present" to future resumed runs.
   if [ ! -s "$fa.bwt" ]; then
     t0=$(date +%s); log "$id bwa index ..."
-    if bwa index "$fa" 2>>"$LOG"; then log "$id bwa index done ($(( ($(date +%s)-t0)/60 )) min)"; else log "$id BWA INDEX FAILED"; continue; fi
+    if bwa index "$fa" 2>>"$LOG"; then
+      log "$id bwa index done ($(( ($(date +%s)-t0)/60 )) min)"
+    else
+      log "$id BWA INDEX FAILED"; rm -f "$fa.bwt" "$fa.sa" "$fa.pac" "$fa.amb" "$fa.ann"; continue
+    fi
   else
     log "$id already indexed (bwa)"
   fi
@@ -59,8 +76,10 @@ grep -vE '^#|^sample\b' "$TSV" | while IFS=$'\t' read -r sample hap superpop loc
     # whole-genome alignment: memory scales with threads. MM_THREADS=4 fits 15 GB; bump it
     # on high-RAM / cloud. This is the instant-per-query-lift path (item 1) at scale.
     t0=$(date +%s); log "$id projection PAF (BUILD_PAF, -c, -t ${MM_THREADS:-4}) ..."
-    # -c emits base-level CIGAR (cg:Z:) so projection lifts coordinates precisely
-    if minimap2 -c -x asm5 -t "${MM_THREADS:-4}" --secondary=no "$CHM13_MMI" "$fa" > "$fa.chm13.paf.part" 2>>"$LOG"; then
+    # -c emits base-level CIGAR (cg:Z:) so projection lifts coordinates precisely; -K 100M
+    # caps minimap2's per-batch query buffer so peak RSS stays bounded (unbounded -K hit
+    # 14.5 GB / OOM'd on a 15 GB box — see hprc-r2/prepare.log)
+    if minimap2 -c -x asm5 -t "${MM_THREADS:-4}" --secondary=no -K 100M "$CHM13_MMI" "$fa" > "$fa.chm13.paf.part" 2>>"$LOG"; then
       mv "$fa.chm13.paf.part" "$fa.chm13.paf"; log "$id PAF done ($(( ($(date +%s)-t0)/60 )) min)"
     else log "$id PAF FAILED"; rm -f "$fa.chm13.paf.part"; fi
   elif [ ! -s "$fa.mmi" ]; then

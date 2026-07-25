@@ -157,18 +157,21 @@ def project_target(
     haplotype_fasta: str,
     *,
     aligner=None,
+    fa=None,
 ) -> Projection:
     """Project a CHM13 target interval onto a haplotype. Prefers the whole-genome PAF cache
     (a fast coordinate lift; see align_cache) and falls back to on-the-fly alignment of the
     template sequence when no cache exists. Pass a prebuilt `aligner` (see make_aligner) to
-    reuse one index load across many targets on the same haplotype."""
+    reuse one index load across many targets on the same haplotype. Pass an already-open `fa`
+    (pysam.FastaFile on `haplotype_fasta`) to reuse a handle across many targets on the PAF-
+    lift path too; the caller retains ownership. Both default to None (open as before)."""
     from pathlib import Path
 
     from . import align_cache
 
     paf = align_cache.paf_path(haplotype_fasta)
     if Path(paf).exists():
-        return align_cache.project_from_paf(paf, chrom, tstart, tend, haplotype_fasta)
+        return align_cache.project_from_paf(paf, chrom, tstart, tend, haplotype_fasta, fa=fa)
     return project_locus(template_seq, haplotype_fasta, aligner=aligner)
 
 

@@ -10,9 +10,7 @@ PAF orientation: we align `minimap2 chm13 hap` so the *target* columns are CHM13
 from __future__ import annotations
 
 import re
-import subprocess
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from .binding import revcomp
 from .model import Locus
@@ -23,19 +21,6 @@ _CIGAR_RE = re.compile(r"(\d+)([MIDNSHP=X])")
 
 def paf_path(hap_fasta: str) -> str:
     return hap_fasta + ".chm13.paf"
-
-
-def build_alignment(chm13_fasta: str, hap_fasta: str, out_paf: str | None = None) -> str:
-    """minimap2 asm5 alignment of a haplotype to CHM13, written as PAF (cached once)."""
-    out = out_paf or paf_path(hap_fasta)
-    tmp = out + ".part"
-    with open(tmp, "wb") as fh:
-        subprocess.run(
-            ["minimap2", "-cx", "asm5", "--secondary=no", chm13_fasta, hap_fasta],
-            check=True, stdout=fh, stderr=subprocess.DEVNULL,
-        )
-    Path(tmp).replace(out)
-    return out
 
 
 @dataclass
@@ -120,10 +105,13 @@ def _lift_pair(b: _Block, start: int, end: int) -> tuple[int, int]:
 
 
 def project_from_paf(
-    paf: str, chrom: str, start: int, end: int, hap_fasta: str
+    paf: str, chrom: str, start: int, end: int, hap_fasta: str, *, fa=None
 ) -> Projection:
     """Lift a CHM13 target interval to a haplotype window using the cached PAF (CIGAR-precise
-    when the PAF carries CIGAR, else linear)."""
+    when the PAF carries CIGAR, else linear). Pass an already-open `fa` (pysam.FastaFile on
+    `hap_fasta`) to reuse a handle a caller holds open across many calls (e.g. one per primer
+    pair) instead of reopening per call; the caller retains ownership and closes it. Left as
+    None (default), a handle is opened and closed here, as before."""
     import pysam
 
     blocks = _overlapping_blocks(paf, chrom, start, end)
@@ -132,11 +120,14 @@ def project_from_paf(
     # best = block with the largest overlap of the target interval
     best = max(blocks, key=lambda b: min(end, b.t_end) - max(start, b.t_start))
     q_lo, q_hi = _lift_pair(best, start, end)
-    fa = pysam.FastaFile(hap_fasta)
+    owns_fa = fa is None
+    if owns_fa:
+        fa = pysam.FastaFile(hap_fasta)
     clen = fa.get_reference_length(best.q_name)
     q_lo, q_hi = max(0, q_lo), min(clen, q_hi)
     seq = fa.fetch(best.q_name, q_lo, q_hi)
-    fa.close()
+    if owns_fa:
+        fa.close()
     if best.strand == "-":
         # extracted haplotype window is antiparallel to the CHM13 template; orient to match
         seq = revcomp(seq)

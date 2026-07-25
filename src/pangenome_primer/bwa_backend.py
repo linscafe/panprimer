@@ -16,9 +16,16 @@ from .model import BindingSite
 
 
 def ensure_index(fasta: str) -> None:
+    """Verify the bwa index for `fasta` exists. Building one in-process would be a silent
+    ~55 min surprise on a multi-Gb assembly, so this fails loudly instead — indexes are meant
+    to be built ahead of time by scripts/prepare_haplotypes.sh. `samtools faidx` IS still
+    auto-built here: it takes seconds, not tens of minutes."""
     if not Path(fasta + ".bwt").exists():
-        subprocess.run(["bwa", "index", fasta], check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        raise FileNotFoundError(
+            f"missing bwa index for {fasta} (no {fasta}.bwt).\n"
+            "Build it with: bash scripts/prepare_haplotypes.sh "
+            "(bwa index takes ~55 min on a ~3 Gb assembly; not built automatically)."
+        )
     if not Path(fasta + ".fai").exists():
         subprocess.run(["samtools", "faidx", fasta], check=True)
 
@@ -69,17 +76,23 @@ def find_binding_sites_batch(
     max_mismatches: int,
     *,
     slop: int = 3,
+    fa=None,
 ) -> dict[str, list[BindingSite]]:
     """Genome-wide binding sites for many primers in one index load. Deduplicates identical
     sequences (candidate pairs share primers). Returns {sequence -> [BindingSite]}. Each
     candidate position's exact mismatches/3' offsets are recomputed with the naive
-    comparator, so bwa only prunes the search space."""
+    comparator, so bwa only prunes the search space. Pass an already-open `fa` (pysam.
+    FastaFile on `fasta`) to reuse a handle a caller holds open across other calls on the
+    same haplotype; the caller retains ownership and closes it. Left as None (default), a
+    handle is opened and closed here, as before."""
     ensure_index(fasta)
     import pysam
 
     uniq = sorted(set(seqs))
     cands = _candidate_positions_batch(uniq, fasta, max_mismatches)
-    fa = pysam.FastaFile(fasta)
+    owns_fa = fa is None
+    if owns_fa:
+        fa = pysam.FastaFile(fasta)
     out: dict[str, list[BindingSite]] = {}
     for i, primer_seq in enumerate(uniq):
         L = len(primer_seq)
@@ -100,5 +113,6 @@ def find_binding_sites_batch(
                 s.start, s.end = gstart, gend
                 sites.append(s)
         out[primer_seq] = sites
-    fa.close()
+    if owns_fa:
+        fa.close()
     return out
