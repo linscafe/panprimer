@@ -117,7 +117,22 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
     dcfg = cfgmod.design_config(raw)
     flank = raw["design"]["flank"]
     max_mm = raw["search"]["max_mismatches"]
+    # Absent from an older config file => fall back to the EvalConfig default rather than
+    # KeyError. Read here so `search.max_binding_sites` behaves the same in design as it
+    # does in verify; relying on the dataclass default silently ignored the config file.
+    max_sites = raw["search"].get("max_binding_sites", EvalConfig.max_binding_sites)
     backend = backend_from_config(raw, warn=lambda m: click.echo(f"  warning: {m}"))
+
+    # One FASTA handle per haplotype, reused for projection and for every candidate's
+    # window fetches. Opening a handle re-reads the .fai and the (~756 KB) .gzi, and the
+    # evaluation loop below is candidate-outer/haplotype-inner, so opening per pair meant
+    # len(candidates) x len(haplotypes) opens instead of one each.
+    fa_cache: dict[str, "pysam.FastaFile"] = {}
+
+    def _fa(path: str):
+        if path not in fa_cache:
+            fa_cache[path] = pysam.FastaFile(path)
+        return fa_cache[path]
 
     # 1) resolve target to a CHM13 (chrom, start, end) + template sequence with flank
     try:
@@ -141,7 +156,7 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
     projections = {}
     hap_seqs = []
     for hid, fasta in haplos:
-        proj = project_target(chrom, tstart, tend, template, fasta)
+        proj = project_target(chrom, tstart, tend, template, fasta, fa=_fa(fasta))
         projections[hid] = (fasta, proj)
         if proj.haplotype_seq:
             hap_seqs.append(proj.haplotype_seq)
@@ -163,7 +178,7 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
     def _ecfg(cand):
         design_tm = _pair_tm(cand.pair.forward.sequence, cand.pair.reverse.sequence, dcfg.tm_opt)
         return EvalConfig(
-            mode=mode, max_mismatches=max_mm,
+            mode=mode, max_mismatches=max_mm, max_binding_sites=max_sites,
             min_product=dcfg.product_size_min, max_product=dcfg.product_size_max,
             rule_cfg=cfgmod.rule_config(raw), thermo_cfg=cfgmod.thermo_config(raw, design_tm),
         )
@@ -199,11 +214,27 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
     def _sites(fasta, hid):
         if hid not in site_cache:
             click.echo(f"    stage B: genome-wide search ({backend}) on {hid} ...")
+            truncated: dict[str, int] = {}
             try:
                 site_cache[hid] = find_binding_sites_batch(
-                    short_seqs, fasta, hid, max_mm, backend=backend)
+                    short_seqs, fasta, hid, max_mm, fa=_fa(fasta),
+                    backend=backend, truncated=truncated)
             except FileNotFoundError as e:
                 raise click.ClickException(str(e))
+            # Only bwa can truncate: above `samse -n` it drops the XA tag wholesale, leaving
+            # one recoverable position for a primer that may bind hundreds of thousands of
+            # places. The binding-site cap cannot catch it -- one site is far below the cap --
+            # so the pair would score as cleanly unique and rank near the top. Design has no
+            # per-cell state to express this, and a corrupted ranking is worse than a stopped
+            # run, so fail loudly.
+            if truncated:
+                worst = max(truncated.items(), key=lambda kv: kv[1])
+                raise click.ClickException(
+                    f"bwa reported {worst[1]} hits for primer {worst[0]} on {hid} but omitted "
+                    f"the XA tag, so its binding-site list is incomplete and any ranking "
+                    f"derived from it would be unreliable. This primer is repeat-derived. "
+                    f"Use search.backend=rust for an exhaustive scan."
+                )
         return site_cache[hid]
 
     results: list[PairResult] = []
@@ -215,14 +246,17 @@ def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
                 per_hap.append(evaluate_with_sites(cand.pair, hid, [], [], None, lambda *a: "", ecfg))
                 continue
             sbs = _sites(fasta, hid)
-            fa = pysam.FastaFile(fasta)
+            fa = _fa(fasta)
             per_hap.append(evaluate_with_sites(
                 cand.pair, hid,
                 sbs.get(cand.pair.forward.sequence, []), sbs.get(cand.pair.reverse.sequence, []),
                 proj.locus, lambda c, s, e, _fa=fa: _fa.fetch(c, s, e), ecfg,
             ))
-            fa.close()
         results.append(PairResult(cand.pair, per_hap, primer3_penalty=cand.penalty))
+
+    for _h in fa_cache.values():
+        _h.close()
+    fa_cache.clear()
 
     # 6) rank + report
     ranked = rank_pairs(results, cfgmod.rank_config(raw))
@@ -396,6 +430,7 @@ def evaluate_cmd(candidates_json, proj_json, hap_fasta, config_path, mode, out) 
     mode = mode or raw["dropout"]["mode"]
     dcfg = cfgmod.design_config(raw)
     max_mm = raw["search"]["max_mismatches"]
+    max_sites = raw["search"].get("max_binding_sites", EvalConfig.max_binding_sites)
     backend = backend_from_config(raw, warn=lambda m: click.echo(f"  warning: {m}"))
     cands = [candidate_from_dict(d) for d in json.loads(Path(candidates_json).read_text())["candidates"]]
     proj = json.loads(Path(proj_json).read_text())
@@ -412,16 +447,27 @@ def evaluate_cmd(candidates_json, proj_json, hap_fasta, config_path, mode, out) 
     else:
         # one genome-wide search for ALL primers on this haplotype (one pass over the assembly)
         all_seqs = [c.pair.forward.sequence for c in cands] + [c.pair.reverse.sequence for c in cands]
+        fa = pysam.FastaFile(fasta)
+        truncated: dict[str, int] = {}
         try:
             sites_by_seq = find_binding_sites_batch(
-                all_seqs, fasta, hid, max_mm, backend=backend)
+                all_seqs, fasta, hid, max_mm, fa=fa, backend=backend, truncated=truncated)
         except FileNotFoundError as e:
             raise click.ClickException(str(e))
-        fa = pysam.FastaFile(fasta)
+        # See the matching guard in `run`: a truncated list scores as cleanly unique because
+        # one site sits far below the binding-site cap, so it would silently corrupt the
+        # ranking. Only bwa can produce one.
+        if truncated:
+            worst = max(truncated.items(), key=lambda kv: kv[1])
+            raise click.ClickException(
+                f"bwa reported {worst[1]} hits for primer {worst[0]} on {hid} but omitted the "
+                f"XA tag, so its binding-site list is incomplete and any ranking derived from "
+                f"it would be unreliable. Use search.backend=rust for an exhaustive scan."
+            )
         for c in cands:
             design_tm = _pair_tm(c.pair.forward.sequence, c.pair.reverse.sequence, dcfg.tm_opt)
             ecfg = EvalConfig(
-                mode=mode, max_mismatches=max_mm,
+                mode=mode, max_mismatches=max_mm, max_binding_sites=max_sites,
                 min_product=dcfg.product_size_min, max_product=dcfg.product_size_max,
                 rule_cfg=cfgmod.rule_config(raw),
                 thermo_cfg=cfgmod.thermo_config(raw, design_tm),
