@@ -4,6 +4,14 @@ Glossary for the pangenome PCR primer design tool. Terms here are canonical: use
 
 ## Core terms
 
+- **Reference genome** — a single consensus human sequence (GRCh38, CHM13). Convenient but lossy: it hides variation and collapses repeated regions into one copy.
+
+- **Pangenome** — many complete genomes together, replacing that single sequence. Here HPRC Release 2: near-gapless assemblies from ~232 individuals across global populations, ~460 haplotypes.
+
+- **CHM13 v2.0** — a complete, gap-free telomere-to-telomere reference, used here **only as the coordinate backbone** (a common ruler for naming positions). It never decides whether a primer works; that verdict comes from the haplotypes.
+
+- **In-silico PCR** — predicting products by pairing forward and reverse binding sites that point at each other within a plausible distance. A single binding site is not a product.
+
 - **Target locus** — the genomic region we want to amplify. Anchored on **CHM13 v2.0**, the primary coordinate system. All other inputs (GRCh38 coords, raw FASTA) are normalized to a CHM13 anchor before anything else happens.
 
 - **Haplotype** — one phased assembly (hap1 or hap2) of one HPRC R2 individual. The atomic unit of evaluation: coverage and specificity are counted over haplotypes, not individuals.
