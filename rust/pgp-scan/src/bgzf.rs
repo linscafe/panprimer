@@ -72,7 +72,7 @@ fn parse_member_header(b: &[u8]) -> Option<(usize, usize)> {
 /// SIGSEGV whose frequency depended on the steal schedule rather than on the input.
 ///
 /// Keeping this out of line confines the temporary to a leaf frame that pops immediately;
-/// only the boxed state (on the heap) crosses back. See `docs/issues.md`.
+/// only the boxed state (on the heap) crosses back. See `docs/scanner_notes.md`.
 #[inline(never)]
 fn new_decompressor() -> Decompress {
     Decompress::new(false) // false => raw deflate, no zlib wrapper

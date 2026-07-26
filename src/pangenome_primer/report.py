@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from dataclasses import asdict
 from pathlib import Path
 
 from .model import Amplicon, HaplotypeStatus
@@ -146,8 +147,25 @@ def _md_table(header: list[str], rows: list[list[str]]) -> str:
     return "\n".join(out)
 
 
+# What each provenance key means. Without this the header is four bare key=value pairs that
+# only make sense to someone who already knows the pipeline -- and the two that actually
+# change how the matrix should be read (target_assembly, max_amplicon) are the least obvious.
+_PROV_GLOSS = {
+    "reference_build": "coordinate backbone every target is anchored to before being "
+                       "projected onto each haplotype",
+    "target_assembly": "which assembly the input CSV's target coordinates are given in "
+                       "(chm13, or grch38 to have them lifted first)",
+    "target": "the locus that was designed against, in CHM13 coordinates",
+    "n_pairs": "how many primer pairs were screened",
+    "max_amplicon": "largest product size (bp) still counted as a real band; anything "
+                    "wider is treated as no product rather than an off-target",
+}
+
+
 def _provenance_md(prov: dict) -> str:
-    return "**Provenance:** " + " ".join(f"`{k}={v}`" for k, v in prov.items())
+    head = "**Provenance:** " + " ".join(f"`{k}={v}`" for k, v in prov.items())
+    gloss = [f"- `{k}` — {_PROV_GLOSS[k]}" for k in prov if k in _PROV_GLOSS]
+    return head + ("\n\n" + "\n".join(gloss) if gloss else "")
 
 
 def _front_matter(title: str) -> str:
@@ -340,6 +358,9 @@ def verify_to_dict(rows, provenance: dict | None = None) -> dict:
                 "target_input": r.target_input,
                 "target_chm13": r.target_chm13,
                 "expected_size": r.expected_size,
+                # Derived from `cells` at serialization time (see verify.summarize), so the
+                # summary cannot drift from the matrix it summarizes.
+                "summary": asdict(r.summary),
                 "cells": [
                     {
                         "haplotype_id": c.haplotype_id, "status": c.status,
@@ -392,12 +413,32 @@ def _verify_cell_md(c: dict) -> str:
 
 # haplotype header columns start at the 4th <th> (after primer_id, expected bp, target);
 # rotate them to vertical only when there are many, to keep the table from getting too wide.
+# n+2: the table is transposed, so column 1 is the haplotype label and the primer columns
+# start at the 2nd. Positional, so it must move if another label column is ever added.
 _MD_VERTICAL_HEADERS = (
     "```{=html}\n"
-    "<style>thead th:nth-child(n+4){writing-mode:vertical-rl;transform:rotate(180deg);"
+    "<style>thead th:nth-child(n+2){writing-mode:vertical-rl;transform:rotate(180deg);"
     "white-space:nowrap;}</style>\n"
     "```"
 )
+
+
+def _summary_text(s: dict) -> str:
+    """Compact one-cell verdict: coverage, then only the non-zero failure modes.
+
+    Suppressing zero counts is what keeps this readable -- a row that simply works reads
+    '100% (30/30)' rather than a line of zeros the eye has to parse."""
+    parts = [f"{round(100 * s['coverage'])}% ({s['n_covered']}/{s['evaluable']})"]
+    for count, label in (
+        (s["n_dropout"], "dropout"),
+        (s["n_off_target"], "off-target"),
+        (s["n_multi_product"], "multi"),
+        (s["n_capped"], "capped"),
+        (s["n_uncertain"], "not projectable"),
+    ):
+        if count:
+            parts.append(f"{count} {label}")
+    return " · ".join(parts)
 
 
 def verify_to_markdown(data: dict) -> str:
@@ -406,10 +447,11 @@ def verify_to_markdown(data: dict) -> str:
     Haplotype headers stay horizontal when there are fewer than 6; at 6+ they rotate to
     vertical so the matrix stays narrow (mirrors the Jinja HTML report)."""
     haps = data["haplotypes"]
+    rows_in = data["rows"]
     parts = [
         _front_matter("Primer verification across the pangenome"),
         _MD_STYLE,
-        *( [_MD_VERTICAL_HEADERS] if len(haps) >= 6 else [] ),
+        *( [_MD_VERTICAL_HEADERS] if len(rows_in) >= 6 else [] ),
         "",
         "# Primer verification across the pangenome",
         "",
@@ -420,13 +462,20 @@ def verify_to_markdown(data: dict) -> str:
     ]
     if data.get("provenance"):
         parts += [_provenance_md(data["provenance"]), ""]
-    header = ["primer_id", "expected bp", "target (CHM13)", *haps]
-    rows = []
-    for r in data["rows"]:
-        cellmap = {c["haplotype_id"]: c for c in r["cells"]}
-        row = [f"`{r['primer_id']}`", str(r["expected_size"]), r["target_chm13"]]
-        row += [_verify_cell_md(cellmap[h]) for h in haps]
-        rows.append(row)
+    # Transposed: primer pairs are columns, haplotypes are rows. The haplotype count is what
+    # grows (30, 60, 464) while the primer count usually does not, so putting haplotypes on
+    # the vertical axis keeps the table narrow no matter how many are screened.
+    lut = {(r["primer_id"], c["haplotype_id"]): c for r in rows_in for c in r["cells"]}
+    header = ["haplotype", *(f"`{r['primer_id']}`" for r in rows_in)]
+    rows = [
+        ["**expected bp**", *(str(r["expected_size"]) for r in rows_in)],
+        ["**target (CHM13)**", *(r["target_chm13"] for r in rows_in)],
+        ["**summary**", *(_summary_text(r["summary"]) for r in rows_in)],
+    ]
+    rows += [
+        [h, *(_verify_cell_md(lut[(r["primer_id"], h)]) for r in rows_in)]
+        for h in haps
+    ]
     parts.append(_md_table(header, rows))
     parts += ["", "*Cells show predicted PCR product sizes (bp). Dotted underline = size "
               "differs from expected.*", ""]
@@ -449,11 +498,20 @@ def write_verify(
     }
     Path(paths["json"]).write_text(json.dumps(data, indent=2))
 
-    cols = ["primer_id", "expected_size", "target_chm13", *data["haplotypes"]]
+    # Summary counts are separate TSV columns rather than one packed string: this file is
+    # meant to be loaded and sorted (e.g. by coverage across 30 haplotypes), which a
+    # human-readable "90% (27/30) · 2 dropout" cell would defeat.
+    cols = ["primer_id", "expected_size", "target_chm13",
+            "coverage", "n_covered", "evaluable", "n_pass", "n_dropout", "n_off_target",
+            "n_multi_product", "n_capped", "n_uncertain", *data["haplotypes"]]
     lines = ["\t".join(cols)]
     for r in data["rows"]:
         cellmap = {c["haplotype_id"]: c for c in r["cells"]}
-        row = [r["primer_id"], str(r["expected_size"]), r["target_chm13"]]
+        s = r["summary"]
+        row = [r["primer_id"], str(r["expected_size"]), r["target_chm13"],
+               f"{s['coverage']:.4f}", str(s["n_covered"]), str(s["evaluable"]),
+               str(s["n_pass"]), str(s["n_dropout"]), str(s["n_off_target"]),
+               str(s["n_multi_product"]), str(s["n_capped"]), str(s["n_uncertain"])]
         row += [_cell_text(cellmap[h]) for h in data["haplotypes"]]
         lines.append("\t".join(row))
     Path(paths["tsv"]).write_text("\n".join(lines) + "\n")
@@ -466,6 +524,7 @@ def write_verify(
         tpl_dir = Path(__file__).resolve().parent.parent.parent / "report"
         env = Environment(loader=FileSystemLoader(str(tpl_dir)),
                           autoescape=select_autoescape(["html", "j2"]))
-        html = env.get_template("verify_matrix.html.j2").render(data=data)
+        html = env.get_template("verify_matrix.html.j2").render(
+            data=data, prov_gloss=_PROV_GLOSS)
         Path(paths["html"]).write_text(html)
     return paths

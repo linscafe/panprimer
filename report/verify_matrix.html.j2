@@ -13,9 +13,9 @@
   .wrap { overflow-x: auto; }
   table { border-collapse: collapse; font-size: 0.85rem; }
   th, td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; white-space: nowrap; vertical-align: top; }
-  th.hap { font-weight: 600; }
-  /* rotate haplotype headers only when there are many of them (see --vertical below) */
-  th.hap.vertical { writing-mode: vertical-rl; transform: rotate(180deg); }
+  th.hap { font-weight: 600; text-align: left; white-space: nowrap; }
+  /* Primer headers rotate only when many pairs are screened at once (see --vertical). */
+  th.pid.vertical { writing-mode: vertical-rl; transform: rotate(180deg); }
   .ok  { color: var(--ok);  font-weight: 700; }
   .off { color: var(--off); font-weight: 700; }
   .dev { text-decoration: underline dotted var(--dev); }
@@ -25,39 +25,104 @@
   .cap { color: var(--off); font-weight: 600; font-size: 11px; white-space: nowrap; }
   .sep { color: var(--muted); }
   code { font-size: 0.8rem; } .muted { color: var(--muted); font-size: 0.8rem; }
-  .legend span { margin-right: 1rem; }
+  ul.legend, ul.prov { margin: 0.4rem 0 0; padding-left: 1.2rem; max-width: 62rem; }
+  ul.legend li, ul.prov li { margin-bottom: 0.3rem; line-height: 1.45; }
+  ul.prov li { color: var(--muted); font-size: 0.9rem; }
+  ul.prov code { color: var(--fg); }
+  /* Row summary: the verdict, readable without scanning every haplotype cell. */
+  .sum { font-size: 0.8rem; line-height: 1.35; }
+  .cov { font-weight: 700; font-size: 0.95rem; color: var(--ok); }
+  .cov.covlow { color: var(--off); }   /* below the 0.95 default rank.min_coverage gate */
+  /* Transposed, the long axis is vertical: 30+ haplotype rows scroll the primer headers
+     off the top, so the cells stop being attributable to a pair. Pin the whole header
+     block (primer names + expected bp + summary) instead of a left column.
+     border-collapse drops borders on sticky cells, hence the box-shadow stand-ins. */
+  /* Only the first header row is pinned. Stacking rows 2 and 3 under it would need each
+     one's `top` to equal the rendered height of the rows above, which is not knowable in
+     static CSS -- the summary row's height varies with how many failure modes it lists.
+     Pinning the primer names alone is what keeps columns attributable while scrolling. */
+  thead tr:first-child th {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--bg); box-shadow: inset 0 -1px 0 var(--line);
+  }
+  /* The two fixed rows are reference values, not per-haplotype measurements -- tint them
+     so the eye does not read them as another haplotype. */
+  .fixed { background: #f6f8fa; }
+  th.rowlab, th.corner { text-align: left; font-weight: 600; background: #f6f8fa; }
+  /* Haplotype label column pinned left too, for the many-primer case where the table is
+     also wide. Higher z-index on the corner so it covers both directions. */
+  th.hap, th.rowlab { position: sticky; left: 0; z-index: 1;
+    background: var(--bg); box-shadow: inset -1px 0 0 var(--line); }
+  th.rowlab { background: #f6f8fa; }
+  /* The corner is pinned in both directions, so it must outrank both. */
+  th.corner { position: sticky; left: 0; top: 0; z-index: 3;
+    box-shadow: inset -1px 0 0 var(--line), inset 0 -1px 0 var(--line); }
 </style>
 </head>
 <body>
 <h1>Primer verification across the pangenome</h1>
-<p class="legend">
-  <span class="ok">correct amplicon size</span>
-  <span class="off">off-target size</span>
-  <span class="drop">dropout</span> (no correct product)
-  <span class="cap">&gt;N binding sites</span> = repeat-derived primer
-  <span class="unc">?</span> = locus not projectable
-  <span class="dev">underlined</span> = size differs from expected
-</p>
+<h2>How to read a cell</h2>
+<ul class="legend">
+  <li><span class="ok">green number</span> — the correct on-target amplicon, in bp</li>
+  <li><span class="off">red number</span> — an off-target product: the pair also amplifies somewhere else</li>
+  <li><span class="drop">dropout</span> — no correct product; a binding-site variant kills the amplification</li>
+  <li><span class="cap">&gt;N binding sites</span> — repeat-derived primer, binding in too many places to score</li>
+  <li><span class="unc">?</span> — the locus could not be projected onto this haplotype, so it is not evidence either way</li>
+  <li><span class="dev">dotted underline</span> — the size differs from the expected amplicon by more than the tolerance</li>
+</ul>
 {% if data.provenance %}
-<p class="muted">{% for k, v in data.provenance.items() %}<code>{{ k }}={{ v }}</code>&nbsp;{% endfor %}</p>
+<h2>Run settings</h2>
+<ul class="prov">
+  {% for k, v in data.provenance.items() %}
+  <li><code>{{ k }}={{ v }}</code>{% if prov_gloss and k in prov_gloss %} — {{ prov_gloss[k] }}{% endif %}</li>
+  {% endfor %}
+</ul>
 {% endif %}
 
-{# horizontal headers when few haplotypes; rotate to save width only when >= 6 #}
-{% set vertical = data.haplotypes | length >= 6 %}
+{# Transposed: primer pairs are COLUMNS, haplotypes are ROWS.
+
+   Haplotype count grows (30, 60, 464); primer count usually does not. Putting haplotypes
+   on the vertical axis turns a 34-column sideways scroll into an ordinary page scroll, and
+   lets a haplotype label read horizontally instead of rotated. Rotation now applies to the
+   primer headers instead, for the case where someone screens many pairs at once. #}
+{% set vertical = data.rows | length >= 6 %}
+{# One (primer_id, haplotype_id) -> cell lookup, built once: the transposed layout walks
+   the cells column-wise, which the per-row `cells` list does not support directly. #}
+{% set lut = {} %}
+{% for r in data.rows %}{% for c in r.cells %}{% set _ = lut.__setitem__((r.primer_id, c.haplotype_id), c) %}{% endfor %}{% endfor %}
 <div class="wrap">
 <table>
+  <thead>
   <tr>
-    <th>primer_id</th><th>expected bp</th>
-    {% for h in data.haplotypes %}<th class="hap{{ ' vertical' if vertical }}">{{ h }}</th>{% endfor %}
+    <th class="corner">haplotype</th>
+    {% for r in data.rows %}<th class="pid{{ ' vertical' if vertical }}">
+      <code>{{ r.primer_id }}</code>{% if not vertical %}<br><span class="muted">{{ r.target_chm13 }}</span>{% endif %}
+    </th>{% endfor %}
   </tr>
-  {% for r in data.rows %}
-  {% set cellmap = {} %}
-  {% for c in r.cells %}{% set _ = cellmap.__setitem__(c.haplotype_id, c) %}{% endfor %}
   <tr>
-    <td><code>{{ r.primer_id }}</code><br><span class="muted">{{ r.target_chm13 }}</span></td>
-    <td>{{ r.expected_size }}</td>
-    {% for h in data.haplotypes %}
-      {% set c = cellmap[h] %}
+    <th class="rowlab">expected bp</th>
+    {% for r in data.rows %}<td class="fixed">{{ r.expected_size }}</td>{% endfor %}
+  </tr>
+  <tr>
+    <th class="rowlab">summary</th>
+    {% for r in data.rows %}{% set s = r.summary %}
+    <td class="fixed sum">
+      <span class="cov {{ 'covlow' if s.coverage < 0.95 }}">{{ (100 * s.coverage) | round | int }}%</span>
+      <span class="muted">{{ s.n_covered }}/{{ s.evaluable }}</span>
+      {%- if s.n_dropout %}<br><span class="drop">{{ s.n_dropout }} dropout</span>{% endif -%}
+      {%- if s.n_off_target %}<br><span class="off">{{ s.n_off_target }} off-target</span>{% endif -%}
+      {%- if s.n_multi_product %}<br><span class="off">{{ s.n_multi_product }} multi</span>{% endif -%}
+      {%- if s.n_capped %}<br><span class="cap">{{ s.n_capped }} capped</span>{% endif -%}
+      {%- if s.n_uncertain %}<br><span class="unc">{{ s.n_uncertain }} not projectable</span>{% endif -%}
+    </td>{% endfor %}
+  </tr>
+  </thead>
+  <tbody>
+  {% for h in data.haplotypes %}
+  <tr>
+    <th class="hap">{{ h }}</th>
+    {% for r in data.rows %}
+      {% set c = lut[(r.primer_id, h)] %}
       <td title="{{ c.reason }}">
         {% if c.status == 'uncertain' %}<span class="unc">?</span>
         {# The cap must be tested BEFORE the empty-product branch: a capped cell has no
@@ -74,6 +139,7 @@
     {% endfor %}
   </tr>
   {% endfor %}
+  </tbody>
 </table>
 </div>
 <p class="muted">Cells show predicted PCR product sizes (bp). Hover for the per-haplotype reason.</p>

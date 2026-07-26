@@ -1,26 +1,31 @@
-# Known issues
+# Scanner notes — why `rust/pgp-scan` looks the way it does
 
-Open defects with enough evidence recorded that someone else — or a later session — can pick
-them up cold. Each entry states what is **established** separately from what is
-**hypothesised**, because the difference decides how much of the diagnosis to trust.
+Two defects (ISSUE-001, ISSUE-002) left behind constructs that read as optional and are not.
+This file is the evidence for them. **Issue status, dates and discussion live in the GitHub
+issue tracker; both are closed.** What is kept here is only what the tracker is a bad home
+for — the reasoning a future reader needs *in the clone*, reachable by `grep`, when deciding
+whether a line can be deleted.
 
-**Currently open: none.** ISSUE-001 and ISSUE-002 are resolved; their records are kept below
-in full, because the reasoning is the only thing that makes the fix reviewable and the
-measurements are the basis for how the scanner should be sized on a bigger host.
+Concretely, do not remove any of these without reading the relevant section first:
+
+| construct | where | deleting it costs |
+|---|---|---|
+| `#[inline(never)]` on `new_decompressor` | `bgzf.rs` | reinstates ISSUE-001 (intermittent SIGSEGV) |
+| `map_init` decompressor reuse | `bgzf.rs` | 500 × 44 KB allocations per batch |
+| explicit `stack_size` / thread count | `pool.rs` | reinstates both defects' preconditions |
+| `PGP_SCAN_STACK` | `pool.rs` | removes the only falsifiability handle on ISSUE-001 |
+| `d.reset(false)` | `bgzf.rs` | mis-inflates the next member in a job |
+
+Each section separates what is **established** from what is **hypothesised**, because the
+difference decides how much of the diagnosis to trust.
+
+Measured on: Linux 6.18.35.2-microsoft-standard-WSL2, 16 cores / 16 GB; Python 3.12.13;
+rustc 1.89.0; pyo3 0.29, rayon 1.10, flate2 1.1.9 (miniz_oxide 0.8.9). Regression tests:
+`tests/test_scan_stack_depth.py`.
 
 ---
 
 ## ISSUE-001 — Intermittent segfault in `pangenome_primer._scan` (stack overflow)
-
-| | |
-|---|---|
-| **Status** | **Resolved** 2026-07-25. Root cause established, not inferred. |
-| **Severity** | High — crashed the process; no wrong answers observed. |
-| **Found** | 2026-07-25, while profiling scan cost for the Phase 5/6 review. |
-| **Component** | `rust/pgp-scan` (`pangenome_primer._scan`), v0.1.0 |
-| **Environment** | Linux 6.18.35.2-microsoft-standard-WSL2, 16 cores / 16 GB; Python 3.12.13; rustc 1.89.0; pyo3 0.29, rayon 1.10, flate2 1.1.9 (miniz_oxide 0.8.9) |
-| **Fixed by** | `bgzf.rs`: `#[inline(never)] new_decompressor` + `map_init` reuse. `pool.rs`: explicit 16 MiB worker stacks. |
-| **Regression test** | `tests/test_scan_stack_depth.py` |
 
 ### Symptom
 
@@ -172,13 +177,8 @@ at production scale — it is merely untested there.
 
 ## ISSUE-002 — `rayon` thread pool is uncapped; **blocks deployment to many-core hosts**
 
-| | |
-|---|---|
-| **Status** | **Resolved** 2026-07-25 (same fix site as ISSUE-001). |
-| **Severity** | Low on the laptop, **High on any server/cloud host.** Correctness unaffected; throughput was not. |
-| **Found** | 2026-07-25, while sizing the pipeline for a 256-core / 700 GB server. |
-| **Component** | `rust/pgp-scan` (`pangenome_primer._scan`), v0.1.0 |
-| **Fixed by** | `rust/pgp-scan/src/pool.rs`; `search.threads` in `config/defaults.yaml` |
+Correctness was never affected; throughput on a many-core host was. Same fix site as
+ISSUE-001 (`pool.rs`), plus `search.threads` in `config/defaults.yaml`.
 
 ### The defect
 
@@ -231,23 +231,19 @@ End-to-end, 8 real haplotypes on 16 cores:
 | 2 threads × 8 concurrent | 38.45 s | 14% faster |
 | 1 thread × 8 concurrent | 71.60 s | worse (only 8 of 16 cores occupied) |
 
-### Recommended settings
+### Recommended settings — see [`sizing.md`](sizing.md)
 
-**These now live in [`sizing.md`](sizing.md)**, together with the Nextflow sizing profiles and `scripts/sizing_sweep.sh` for re-measuring on a target host. Kept here for the record.
+Per-host recommendations, the Nextflow sizing profiles, the anchor-grid RAM constraint and
+`scripts/sizing_sweep.sh` all live in [`sizing.md`](sizing.md), which is the single place to
+update them. **They are deliberately not restated here.** An earlier revision of this file
+duplicated them, and the copies drifted: the grid-build estimates were corrected in
+`sizing.md` from a 27-build measurement while the copy here still quoted the superseded
+figures. This file keeps only the *measurements* below, which `sizing.md` cites as their
+source; anything derived from them belongs there.
 
-Rule of thumb: **threads × concurrent-haplotypes ≈ core count**, threads in the 2–4 range.
+The one line worth repeating, because everything else follows from it:
 
-| scenario | `search.threads` | concurrent haplotypes | peak RAM |
-|---|---|---|---|
-| 16-core laptop, CLI as it is today (sequential loop) | `null` (→16) | 1 | 0.4 GB |
-| 16-core laptop, once haplotypes run in parallel | **4** | 4 | 1.6 GB |
-| **256-core server, many haplotypes** | **4** | **64** | ~26 GB |
-| 256-core server, single haplotype | 8–16 — **never 256** | 1 | 0.4 GB |
-
-For the anchor-grid build the equivalent knob is minimap2's `-t` (`MM_THREADS` in
-`scripts/prepare_haplotypes.sh`), and there the binding constraint is RAM, not cores: ~8.3 GB
-per concurrent build means **1 at a time on a 16 GB laptop** but ~64 on a 700 GB server — the
-difference between ~62 h and ~1 h for 464 haplotypes.
+> **threads × concurrent-haplotypes ≈ core count**, with threads in the **2–4** range.
 
 ### The fix
 

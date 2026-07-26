@@ -3,7 +3,7 @@
 Every default in this repo is tuned for the machine it was developed on: **16 logical cores,
 16 GB RAM**. Most of them are wrong for a bigger host, and one of them — the scanner's thread
 count — used to be wrong in a way that makes a 256-core server *slower than the laptop*
-(ISSUE-002 in [`issues.md`](issues.md)).
+(ISSUE-002 in [`scanner_notes.md`](scanner_notes.md)).
 
 Nothing here is auto-detected on purpose. Auto-tuning would guess, and a wrong guess on a
 shared cluster node is expensive and silent. The knobs are explicit, they have defaults that
@@ -53,7 +53,7 @@ entirely: see *Anchor-grid builds* below.
 | `scan_memory` | 2 GB | 2 GB | 2 GB |
 | `grid_threads` (minimap2 `-t`) | 4 | 8 | 8 |
 | concurrent anchor-grid builds | **1** | 16 | 64 |
-| 464-haplotype grid build | ~62 h | ~4 h | ~1 h |
+| 464-haplotype grid build | ~35 h | ~2.2 h | ~35 min |
 
 Single-haplotype runs are the exception: there is nothing to run concurrently, so give the
 scan more threads — 8–16, and **never 256**, because efficiency is already 21% at 16.
@@ -111,6 +111,12 @@ scan *should* take the machine. Set it only if you run several CLI processes at 
 `scripts/prepare_haplotypes.sh` honours `MM_THREADS` (default 4), and
 `pangenome-primer build-anchor-grid` takes `--threads`.
 
+A build takes **~4.5 min per ~3 Gb haplotype** at `MM_THREADS=4` (measured over 27 consecutive
+builds on the 16-core laptop: min 3.93, median 4.48, mean 4.52, max 5.40; grids came out
+90.6–92.8% anchored at ~4.3 MB each). An earlier ~9 min figure here was roughly 2× too
+pessimistic — the server columns above are that measured rate divided by the concurrency each
+host's RAM allows, so treat them as scaled from a laptop, not measured on a server.
+
 The binding constraint here is **~8.3 GB peak per concurrent build**, not cores:
 
 | host | concurrent builds | why |
@@ -150,6 +156,7 @@ Record what you measure here, so the next person inherits a number rather than a
 |---|---|---|---|---|
 | 16-core / 16 GB WSL2 laptop | 2026-07-25 | 16 (5.84 s) | 4 threads × 4 concurrent | ISSUE-002 |
 | 16-core / 16 GB WSL2 laptop | 2026-07-25 | 16 (5.89 s) | 4 threads × 4 concurrent | `sizing_sweep.sh` |
+| 16-core / 16 GB WSL2 laptop | 2026-07-26 | — | — | 30-hap prep, `timing_30hap.md` |
 
 The second row is the script re-deriving the first independently — 1 thread 19.95 s vs 20.05 s,
 4 threads 7.94 s vs 8.10 s, efficiency 100/63/21% vs 100/62/21%. Reassuring for the method,

@@ -34,7 +34,7 @@
 //! It is a ceiling for the *single-scan* case only. Running many haplotypes at once wants a
 //! much lower number -- measured optimum on 16 cores was 4 threads x 4 concurrent, 19% faster
 //! than the default -- and that is what `search.threads` is for. See ISSUE-002 in
-//! `docs/issues.md` for the measured curves and the threads x concurrency rule.
+//! `docs/scanner_notes.md` for the measured curves and the threads x concurrency rule.
 
 use std::sync::OnceLock;
 

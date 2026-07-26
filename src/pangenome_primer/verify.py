@@ -51,6 +51,63 @@ class VerifyCell:
 
 
 @dataclass
+class VerifySummary:
+    """Per-row counts across haplotypes — the row's verdict, independent of column count.
+
+    At 3 haplotypes the matrix is read by eye; at 30 it is not, and the number a reader
+    actually wants ("does this pair work across diversity?") is not recoverable by scanning
+    30 cells. The definitions mirror `model.PairResult` on purpose, so verify and design
+    report the same quantity under the same name:
+
+    - `coverage` is `on_target_coverage`: of the **evaluable** haplotypes, the fraction with
+      at least one on-target amplicon. It credits `multi_product` deliberately — a pass-only
+      coverage makes a locus that always throws an extra band read as 0%, the mislabel
+      `model.py` warns about at `on_target_coverage`.
+    - `unique_rate` is `unique_product_rate`: pass-only, the specificity counterpart.
+
+    `evaluable` excludes `uncertain` (locus not projectable), matching the rule that every
+    rank gate is applied over total − uncertain.
+    """
+
+    total: int
+    evaluable: int
+    n_covered: int         # evaluable cells with >=1 on-target amplicon (coverage numerator)
+    n_pass: int
+    n_dropout: int
+    n_off_target: int
+    n_multi_product: int
+    n_uncertain: int
+    n_capped: int          # cells whose binding-site cap tripped; see note below
+    coverage: float
+    unique_rate: float
+
+
+def summarize(cells: list[VerifyCell]) -> VerifySummary:
+    """Derive a row summary from its cells. Always computed, never stored alongside the
+    cells it describes — a summary that can drift from its matrix is worse than none."""
+    n = len(cells)
+    n_unc = sum(1 for c in cells if c.status == "uncertain")
+    ev = [c for c in cells if c.status != "uncertain"]
+    n_cov = sum(1 for c in ev if c.on_target)
+    # A capped cell enumerates no products by design, so it counts as not-covered here.
+    # Reported separately because that is an *unknown*, not a measured failure to amplify:
+    # without it a promiscuous primer's row is indistinguishable from a genuinely dead one.
+    return VerifySummary(
+        total=n,
+        evaluable=len(ev),
+        n_covered=n_cov,
+        n_pass=sum(1 for c in cells if c.status == "pass"),
+        n_dropout=sum(1 for c in cells if c.status == "dropout"),
+        n_off_target=sum(1 for c in cells if c.status == "off_target"),
+        n_multi_product=sum(1 for c in cells if c.status == "multi_product"),
+        n_uncertain=n_unc,
+        n_capped=sum(1 for c in cells if c.site_cap),
+        coverage=(n_cov / len(ev)) if ev else 0.0,
+        unique_rate=(sum(1 for c in ev if c.status == "pass") / len(ev)) if ev else 0.0,
+    )
+
+
+@dataclass
 class VerifyRow:
     primer_id: str
     forward: str
@@ -59,6 +116,10 @@ class VerifyRow:
     target_chm13: str
     expected_size: int
     cells: list[VerifyCell] = field(default_factory=list)
+
+    @property
+    def summary(self) -> VerifySummary:
+        return summarize(self.cells)
 
 
 def _resolve_headers(fieldnames: list[str]) -> dict[str, str]:

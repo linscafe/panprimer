@@ -38,7 +38,23 @@ _DESIGN = {
     ],
 }
 
-_VERIFY = {
+def _attach_summaries(data: dict) -> dict:
+    """Fill each row's `summary` using the production summarizer instead of hand-written
+    literals, so these fixtures track verify_to_dict's shape as it changes."""
+    from dataclasses import asdict
+
+    from pangenome_primer.verify import VerifyCell, summarize
+
+    for r in data["rows"]:
+        r["summary"] = asdict(summarize([
+            VerifyCell(c["haplotype_id"], c["status"], c["on_target"], c["off_target"],
+                       c["size_flag"], c["reason"], c.get("site_cap"))
+            for c in r["cells"]
+        ]))
+    return data
+
+
+_VERIFY = _attach_summaries({
     "provenance": {"reference_build": "CHM13v2.0"},
     "haplotypes": ["h1", "h2"],
     "rows": [
@@ -63,7 +79,7 @@ _VERIFY = {
             ],
         },
     ],
-}
+})
 
 
 def test_design_markdown_structure():
@@ -97,29 +113,41 @@ def test_verify_cell_never_contains_bare_pipe():
     assert "{.ok .dev}" in cell                          # size_flag -> dotted underline
 
 
-def _verify_data(n_haps: int) -> dict:
+def _verify_data(n_haps: int, n_primers: int = 1) -> dict:
     haps = [f"h{i}" for i in range(n_haps)]
-    return {
+    return _attach_summaries({
         "provenance": {}, "haplotypes": haps,
         "rows": [{
-            "primer_id": "P", "forward": "A", "reverse": "C",
+            "primer_id": f"P{p}", "forward": "A", "reverse": "C",
             "target_input": "chr1:1-100", "target_chm13": "chr1:1-100", "expected_size": 100,
             "cells": [{"haplotype_id": h, "status": "pass", "on_target": [100],
                        "off_target": [], "size_flag": False, "reason": ""} for h in haps],
-        }],
-    }
+        } for p in range(n_primers)],
+    })
 
 
 def test_verify_markdown_headers_horizontal_when_few():
-    # < 6 haplotypes -> no rotation style injected
-    assert "writing-mode" not in report.verify_to_markdown(_verify_data(5))
+    # The table is transposed, so rotation keys on the PRIMER count, not the haplotype
+    # count: 30 haplotypes are rows now and never widen the table.
+    assert "writing-mode" not in report.verify_to_markdown(_verify_data(30, n_primers=5))
 
 
 def test_verify_markdown_headers_vertical_when_many():
-    # >= 6 haplotypes -> rotate the haplotype header columns (4th <th> onward)
-    md = report.verify_to_markdown(_verify_data(6))
+    # >= 6 primer pairs -> rotate the primer header columns (2nd <th> onward; column 1 is
+    # the haplotype label)
+    md = report.verify_to_markdown(_verify_data(3, n_primers=6))
     assert "writing-mode:vertical-rl" in md
-    assert "th:nth-child(n+4)" in md
+    assert "th:nth-child(n+2)" in md
+
+
+def test_verify_markdown_is_transposed():
+    """Haplotypes are rows and primers are columns. This is what keeps the table readable
+    as the haplotype count grows -- it is the axis that scales (30, 60, 464)."""
+    md = report.verify_to_markdown(_verify_data(30, n_primers=2))
+    header = next(ln for ln in md.splitlines() if ln.startswith("| haplotype"))
+    assert "`P0`" in header and "`P1`" in header      # primers across the top
+    assert "| h29 " in md                              # ...and every haplotype down the side
+    assert "**expected bp**" in md and "**summary**" in md
 
 
 def _render_verify_html(data: dict) -> str:
@@ -131,14 +159,24 @@ def _render_verify_html(data: dict) -> str:
 
 
 def test_verify_html_headers_horizontal_when_few():
-    html = _render_verify_html(_verify_data(5))
-    assert 'class="hap"' in html                 # header cells present, not rotated
-    assert 'class="hap vertical"' not in html    # the rotation modifier is absent
+    html = _render_verify_html(_verify_data(30, n_primers=5))
+    assert 'class="pid"' in html                 # primer headers present, not rotated
+    assert 'class="pid vertical"' not in html    # the rotation modifier is absent
 
 
 def test_verify_html_headers_vertical_when_many():
-    html = _render_verify_html(_verify_data(6))
-    assert 'class="hap vertical"' in html
+    # Rotation follows the primer count now: haplotypes are rows and never widen the table.
+    html = _render_verify_html(_verify_data(3, n_primers=6))
+    assert 'class="pid vertical"' in html
+
+
+def test_verify_html_is_transposed():
+    html = _render_verify_html(_verify_data(30, n_primers=2))
+    # one haplotype row-label per haplotype, one primer column header per pair
+    assert html.count('<th class="hap">') == 30
+    assert html.count('class="pid') == 2
+    assert '<th class="rowlab">expected bp</th>' in html
+    assert '<th class="rowlab">summary</th>' in html
 
 
 def test_quarto_render_when_available(tmp_path):

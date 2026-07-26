@@ -88,7 +88,7 @@ def threads_from_config(raw: dict | None) -> int | None:
     None (absent, null, or 0) means "let the scanner choose": all cores up to its own cap.
     That is the right default for the CLI as it stands, which loops haplotypes one at a time
     -- a solo scan should take the machine. It is the wrong default the moment haplotypes run
-    concurrently, which is why the key exists. See ISSUE-002 in `docs/issues.md` for the
+    concurrently, which is why the key exists. See ISSUE-002 in `docs/scanner_notes.md` for the
     measured curves; the short version is `threads x concurrent-haplotypes ~= core count`.
     """
     if not raw:

@@ -8,11 +8,17 @@ the regenerated matrix must reproduce the frozen one exactly, including:
 
 * `CYP2D6_paralog` in verify.json -- the CYP2D7-off-target row (status `multi_product`,
   an off-target product alongside the correct one on every haplotype).
-* `CYP2D6_dropout` in verify.json -- the allele-dropout row. It is POPULATION-DIFFERENTIAL:
-  `dropout` in HG00097#hap1 (EUR) and `pass` in HG01884#hap1 (AFR) / HG00408#hap1 (EAS),
-  driven by rs1058164 (CYP2D6 c.1661G>C, exon 3) sitting under the forward primer's 3'
-  terminal base. Do not weaken this to "dropout everywhere" -- see the note on that
-  assertion for why a fails-everywhere row is indistinguishable from a broken primer.
+* `CYP2D6_dropout` in verify.json -- the allele-dropout row. It is HAPLOTYPE-DIFFERENTIAL:
+  `dropout` in HG00097#hap1 and `pass` in HG01884#hap1 / HG00408#hap1, driven by rs1058164
+  (CYP2D6 c.1661G>C, exon 3) sitting under the forward primer's 3' terminal base. Do not
+  weaken this to "dropout everywhere" -- see the note on that assertion for why a
+  fails-everywhere row is indistinguishable from a broken primer.
+
+  These three carry AFR/EUR/EAS labels, but the split is NOT population-structured: rs1058164
+  is globally common, and across 30 haplotypes the same pair drops out in 11/24 evaluable in
+  every superpopulation (AFR 2/5, AMR 3/6, EAS 1/3, EUR 3/5, SAS 2/5). The fixture picks up a
+  genotype difference between three individuals, not a population signal -- so do not add
+  assertions tying a superpopulation label to an expected status.
 
 Two speeds of test live here:
 
@@ -201,10 +207,12 @@ def test_golden_verify_fixture_exists_and_has_off_target_and_dropout_rows():
     dropout_cells = rows["CYP2D6_dropout"]["cells"]
     assert dropout_cells, "CYP2D6_dropout has no haplotype cells"
 
-    # This row is POPULATION-DIFFERENTIAL, not a universal failure, and asserting the latter
-    # is how the previous row's defect hid. It exploits rs1058164 (CYP2D6 c.1661G>C, exon 3)
-    # under the forward primer's 3' terminal base: HG00097#hap1 (EUR) carries C and drops
-    # out; HG01884#hap1 (AFR) and HG00408#hap1 (EAS) carry G and amplify.
+    # This row is DIFFERENTIAL BETWEEN HAPLOTYPES, not a universal failure, and asserting the
+    # latter is how the previous row's defect hid. It exploits rs1058164 (CYP2D6 c.1661G>C,
+    # exon 3) under the forward primer's 3' terminal base: HG00097#hap1 carries C and drops
+    # out; HG01884#hap1 and HG00408#hap1 carry G and amplify. The superpopulation labels are
+    # incidental -- the variant is globally common (11/24 dropout across 30 haplotypes, all
+    # five superpopulations), so this is a genotype difference, not a population one.
     #
     # The pair it replaced was an Alu consensus (~330k binding sites) that the old bwa
     # backend's XA cap

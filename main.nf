@@ -86,7 +86,7 @@ process EVALUATE {
     // concurrent tasks spawns 256 workers -- 16,384 threads over 256 cores. Handing it
     // `task.cpus` makes threads x concurrency <= the allocation by construction rather than
     // by convention. Tune the number via `withName: EVALUATE { cpus = N }` in
-    // nextflow.config; see ISSUE-002 in docs/issues.md for the measured curve.
+    // nextflow.config; see ISSUE-002 in docs/scanner_notes.md for the measured curve.
     """
     export PGP_SCAN_THREADS=${task.cpus}
     pangenome-primer evaluate --candidates ${shortlist} --projection ${proj} \

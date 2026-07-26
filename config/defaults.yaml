@@ -39,7 +39,7 @@ search:
                              # efficiency is only 21% at 16 threads. Peak RSS is ~400 MB at
                              # every thread count, so RAM never justifies a high value.
                              # RAYON_NUM_THREADS still overrides. See ISSUE-002 in
-                             # docs/issues.md before setting this on a server.
+                             # docs/scanner_notes.md before setting this on a server.
   max_binding_sites: 100     # cap on amplification-competent binding sites per primer.
                              # Above it, scanning stops and the cell reads ">100 binding
                              # sites" instead of enumerating products -- a primer binding

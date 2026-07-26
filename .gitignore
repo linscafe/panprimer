@@ -30,3 +30,7 @@ demo-design-pipeline/
 demo-verify-pipeline/
 # Reference notes (kept local only)
 ref/
+# Verify/design run outputs (same rule as results/ above)
+verify_out_*/
+# Raw run logs and throwaway driver scripts; the distilled timings live in docs/
+logs/

@@ -71,7 +71,7 @@ primers.csv
 
 ## 4. Reading the output
 
-The primary deliverable is a **matrix** — one **row per primer pair**, one **column per haplotype** — where each cell shows the predicted PCR product size(s):
+The primary deliverable is a **matrix** — one **column per primer pair**, one **row per haplotype** — where each cell shows the predicted PCR product size(s). (Haplotypes are on the vertical axis because that is the count that grows: 3, 30, or all ~460. Primer pairs stay few.) The first two rows carry the pair's expected amplicon size and a **summary**: its on-target coverage plus a count of each failure mode.
 
 - **Green** number = the **correct (on-target) amplicon** size. Sizes may differ by a few bases between people — that's a real biological signal (a small insertion/deletion inside the amplicon), not an error; large deviations are underlined.
 - **Red** number = an **off-target** product size (a spurious band).
@@ -79,7 +79,9 @@ The primary deliverable is a **matrix** — one **row per primer pair**, one **c
 - **`?`** = the locus couldn't be projected in that assembly (unknown, not a failure).
 - **`>100 binding sites`** = the primer binds in too many places to be worth scoring (a repeat-derived primer, e.g. one sitting on an *Alu* element). No product sizes are reported, because a primer that anneals in ~100,000 places amplifies indiscriminately and enumerating its bands would imply a precision that isn't there.
 
-Read a row left-to-right and you effectively see the gel you'd get across many people: all-green means a robust pair; a red here or a "dropout" there tells you precisely where — and in which population — the pair would let you down. A machine-readable **TSV/JSON** is written alongside.
+Read a column top-to-bottom and you effectively see the gel you'd get across many people: all-green means a robust pair; a red here or a "dropout" there tells you precisely **which haplotypes** the pair would let you down in. A machine-readable **TSV/JSON** is written alongside.
+
+**A caution about reading populations off this matrix.** Each column is a set of *individual genotypes*, not a population frequency. With a handful of haplotypes a dropout will inevitably land on some superpopulation label, and it is tempting to report the variant as specific to it. Usually it is not — it is a common variant that your sample was too small to place. The bundled 3-haplotype demo shows exactly this trap: the CYP2D6 dropout falls on the European haplotype, yet at 30 haplotypes the same pair fails in 11 of 24 evaluable, in every superpopulation. If you want a claim about a population, size the panel for it and read the **summary** counts; the per-cell colours answer "in whom", not "in which group".
 
 ---
 
