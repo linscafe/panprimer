@@ -41,8 +41,8 @@ builds*.
 | | **16-core laptop**<br>16 GB | **~64-core server**<br>256 GB | **~256-core server**<br>700 GB |
 |---|---|---|---|
 | Nextflow profile | `-profile local,laptop16` | `-profile local,server64` | `-profile local,server256` |
-| `scan_threads` (= EVALUATE `cpus`) | 4 | 4 | 4 |
-| concurrent EVALUATE tasks | 4 | 16 | 64 |
+| `scan_threads` (= `EVALUATE` `cpus`) | 4 | 4 | 4 |
+| concurrent `EVALUATE` tasks | 4 | 16 | 64 |
 | `scan_memory` | 2 GB | 2 GB | 2 GB |
 | `grid_threads` (minimap2 `-t`) | 4 | 8 | 8 |
 | concurrent anchor-grid builds | **1** | 16 | 64 |

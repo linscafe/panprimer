@@ -5,16 +5,19 @@ Design and screen PCR primers against the **HPRC R2 human pangenome** instead of
 - **Dropout** — a SNP/indel under a primer's 3′ end kills the product in carriers.
 - **Off-target** — a paralog the reference collapses into one copy gives extra bands.
 
-Two pipelines share one engine: **verify** (bring your own primers) and **design** (give it a target).
+Two pipelines share one engine:
 
-![Verify pipeline output — a primer × haplotype amplicon-size matrix](docs/img/verify_matrix.svg)
+| pipeline | command | you supply | you get |
+|---|---|---|---|
+| **VERIFY** | `pangenome-primer verify` | primer pairs | what bands they give, in whom |
+| **DESIGN** | `pangenome-primer run` | a target region | ranked primer pairs |
+
+![VERIFY output — a primer × haplotype amplicon-size matrix](docs/img/verify_matrix.svg)
 
 Above: four pairs across three haplotypes. **Green** = correct amplicon, **red** = off-target, grey = **dropout**. The CYP2D6 paralog pair co-amplifies the CYP2D7 pseudogene; the dropout pair fails in one of the three, because [rs1058164](https://www.ncbi.nlm.nih.gov/snp/rs1058164) sits under its forward primer's 3′ terminal base.
 
-> [!NOTE]
-> **Three haplotypes show that a failure exists, not how common it is.** That dropout lands on the European haplotype, which invites calling rs1058164 a European variant. It isn't. Across **30 haplotypes** the same pair fails in **11 of 24 evaluable (46%)**, in every superpopulation — AFR 2/5, AMR 3/6, EAS 1/3, EUR 3/5, SAS 2/5. Size the panel to the claim you want to make.
 
-**New here?** Plain-language intros: [design](docs/intro_design_pipeline.md) · [verify](docs/intro_verify_pipeline.md). Also [`CONTEXT.md`](CONTEXT.md) (glossary), [config reference](docs/config_reference.md), and [sizing](docs/sizing.md) if you run on anything bigger than a laptop.
+**New here?** Plain-language intros: [**DESIGN**](docs/intro_design_pipeline.md) · [**VERIFY**](docs/intro_verify_pipeline.md). Also [`CONTEXT.md`](CONTEXT.md) (glossary), [config reference](docs/config_reference.md), and [sizing](docs/sizing.md) if you run on anything bigger than a laptop.
 
 > [!WARNING]
 > **First-time data setup is the slow part.** Downloading and preparing genomes is a one-time job — ~30 min for the 3-haplotype demo, hours for a large subset. Runs themselves take under a minute per pipeline.
@@ -23,12 +26,13 @@ Above: four pairs across three haplotypes. **Green** = correct amplicon, **red**
 > |---|---|
 > | Storage | ~11 GB — 0.91 GB/haplotype (BGZF `.fa.gz` + `.fai`/`.gzi` + ~4 MB anchor grid), plus ~8.5 GB for CHM13 |
 > | Memory | ~1 GB for search and projection; the one-time grid build peaks ~11 GB |
->
-> No per-haplotype index is built at all — not the 3.08 GB uncompressed `.fa`, nor a 5.31 GB search index, nor the 5.80 GB minimap2 index the anchor grid replaces.
 
-## ⚙️ How it works
+
+## ⚙️ How **DESIGN** works
 
 Target (CHM13 region, GRCh38 region, or FASTA) → anchor on **CHM13 v2.0** → project onto each haplotype → mask variable sites → **Primer3** candidates → exhaustive genome-wide binding search → **thermodynamic**, 3′-aware dropout classification → pair into amplicons → per-haplotype status (`pass`/`dropout`/`off_target`/`multi_product`/`uncertain`) → rank by coverage + specificity → TSV/JSON + HTML.
+
+**VERIFY** runs on the same engine. Because you supply the primers, it skips masking and Primer3: anchor, project, then straight into the genome-wide binding search and every step after it.
 
 ## 🛠️ Setup
 
@@ -75,7 +79,27 @@ Budget **~4.5 min per haplotype** for the anchor grid (measured over 27 builds �
 
 Assemblies stay compressed: the scanner streams the BGZF, and `pysam` random-accesses it through `.fai`/`.gzi`. Projection uses a **sparse anchor grid** — ~1 kb probes every 10 kb, mapped against the *shared* CHM13 index, so one large index serves every haplotype. The grid is ~4 MB and locates a target to within a few kb; the exact coordinate comes from a base-level realignment of that window, so accuracy is unchanged.
 
-## ▶️ Run the design pipeline
+
+## 🔍 Run **VERIFY** on existing primers
+
+Input CSV — `target` is the intended amplicon region (GRCh38 by default):
+
+```csv
+primer_id,target,forward,reverse
+GAPDH_ex,chr12:6534000-6534240,CGCTTCATGCTGCACATCTC,TTCAGTAATGGCTGCCTGGG
+```
+
+```bash
+pangenome-primer verify --primers primers.csv --chm13 CHM13v2.0.fa --grch38 GRCh38.fa \
+    --samples config/samples.tsv --outdir verify_out   # --target-assembly chm13 for CHM13 coords
+```
+
+Writes `verify_matrix.html` plus `verify.json`/`.tsv`: **one column per primer pair, one row per haplotype** (haplotypes go on the vertical axis because that count grows — 3, 30, ~460 — while pairs stay few). Cells show product sizes; `?` means the locus could not be projected, and `>100 binding sites` means a repeat-derived primer binds too widely to score.
+
+Each pair gets a **summary** row: on-target coverage plus per-failure-mode counts. Coverage is measured over *evaluable* haplotypes (total − not-projectable) and credits a haplotype whose target amplifies even alongside an extra band — the same `on_target_coverage` **DESIGN** ranks on. `verify.tsv` carries the same numbers as sortable columns.
+
+
+## ▶️ Run **DESIGN**
 
 ```bash
 pangenome-primer run --target chr1:1200-1400 --chm13 CHM13v2.0.fa \
@@ -102,24 +126,6 @@ nextflow run main.nf -profile local \
 
 Tune thresholds in `config/defaults.yaml`.
 
-## 🔍 Verify existing primers
-
-Input CSV — `target` is the intended amplicon region (GRCh38 by default):
-
-```csv
-primer_id,target,forward,reverse
-GAPDH_ex,chr12:6534000-6534240,CGCTTCATGCTGCACATCTC,TTCAGTAATGGCTGCCTGGG
-```
-
-```bash
-pangenome-primer verify --primers primers.csv --chm13 CHM13v2.0.fa --grch38 GRCh38.fa \
-    --samples config/samples.tsv --outdir verify_out   # --target-assembly chm13 for CHM13 coords
-```
-
-Writes `verify_matrix.html` plus `verify.json`/`.tsv`: **one column per primer pair, one row per haplotype** (haplotypes go on the vertical axis because that count grows — 3, 30, ~460 — while pairs stay few). Cells show product sizes; `?` means the locus could not be projected, and `>100 binding sites` means a repeat-derived primer binds too widely to score.
-
-Each pair gets a **summary** row: on-target coverage plus per-failure-mode counts. Coverage is measured over *evaluable* haplotypes (total − not-projectable) and credits a haplotype whose target amplifies even alongside an extra band — the same `on_target_coverage` the design pipeline ranks on. `verify.tsv` carries the same numbers as sortable columns.
-
 ## 🚧 Not yet
 
 - The full ~460-haplotype / cloud-scale run.
@@ -139,7 +145,7 @@ Built entirely on public genome resources: the [HPRC](https://humanpangenome.org
 | [Quarto](https://quarto.org/) | Optional Markdown → HTML rendering |
 | [Click](https://click.palletsprojects.com/), [Jinja2](https://jinja.palletsprojects.com/), [PyYAML](https://pyyaml.org/) | CLI, templating, configuration |
 
-**Please cite:**
+**Reference**
 
 - HPRC — [Liao, W.-W., *et al.* (2023). *Nature* **617**, 312–324.](https://doi.org/10.1038/s41586-023-05896-x)
 - CHM13 v2.0 — [Nurk, S., *et al.* (2022). *Science* **376**, 44–53.](https://doi.org/10.1126/science.abj6987)

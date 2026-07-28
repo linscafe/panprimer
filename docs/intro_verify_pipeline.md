@@ -1,6 +1,8 @@
-# An introduction to the primer **verification** pipeline
+# **VERIFY** — an introduction to the primer-verification pipeline
 
-> New to pangenomes? [`intro_design_pipeline.md`](intro_design_pipeline.md) §2 has the fuller explanation. Both pipelines share an engine but answer opposite questions.
+> Primer pairs in, a per-haplotype verdict out. Run it with `pangenome-primer verify`.
+> Need primers designed instead? That is **DESIGN** — see [`intro_design_pipeline.md`](intro_design_pipeline.md),
+> whose §2 also has the fuller pangenome explanation. Both pipelines share an engine but answer opposite questions.
 
 ## 1. The problem
 
@@ -8,7 +10,7 @@ Sometimes you don't need to *design* primers — you already **have** a pair, fr
 
 > *Will these primers behave across the diversity of real human genomes — or drop out in some people, or throw extra bands from a look-alike locus?*
 
-You hand over a list of pairs; the pipeline predicts, for each pair in each of many real genomes, what you would see on a gel: the size of the correct product and of any off-target products. **It designs nothing.**
+You hand over a list of pairs; **VERIFY** predicts, for each pair in each of many real genomes, what you would see on a gel: the size of the correct product and of any off-target products. **It designs nothing.**
 
 Two things a single-reference check cannot tell you:
 
@@ -73,9 +75,9 @@ Read a column top to bottom and you see the gel you'd get across many people. A 
 > [!CAUTION]
 > **A cell is an individual genotype, not a population frequency.** With few haplotypes a dropout will inevitably land on some superpopulation label, and it is tempting to call the variant specific to it. Usually it is not — it is a common variant your sample was too small to place. The bundled 3-haplotype demo shows the trap exactly: its CYP2D6 dropout falls on the European haplotype, yet at 30 haplotypes the same pair fails in 11 of 24 evaluable, in every superpopulation. For a claim about a population, size the panel for it.
 
-## 5. Design decisions
+## 5. Why it works this way
 
-**Why separate from design?** A different question deserves a different shape. Verification skips candidate generation and masking entirely, and its output is a **size matrix**, because the practical question about existing primers is "what bands, what sizes, in whom?" — not "which of 20 candidates is best?"
+**Why separate from DESIGN?** A different question deserves a different shape. **VERIFY** skips candidate generation and masking entirely, and its output is a **size matrix**, because the practical question about existing primers is "what bands, what sizes, in whom?" — not "which of 20 candidates is best?"
 
 **Why sizes rather than pass/fail?** A biologist reads a gel by band size. A size matrix mirrors the experiment, and shows *how* a pair misbehaves — a 282 bp paralog band sitting just above the correct 280 bp product is a different problem from a missing band.
 

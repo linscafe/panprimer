@@ -1,4 +1,7 @@
-# An introduction to the primer **design** pipeline
+# **DESIGN** — an introduction to the primer-design pipeline
+
+> Target region in, ranked primer pairs out. Run it with `pangenome-primer run`.
+> Already have primers? That is **VERIFY** — see [`intro_verify_pipeline.md`](intro_verify_pipeline.md).
 
 ## 1. The problem
 
@@ -9,7 +12,7 @@ The catch is that **the reference is one sequence and humans are not.** Any two 
 - **Dropout.** A common SNP or indel sits under a primer, especially near its **3′ end**. The polymerase cannot extend off a mismatched 3′ end, so carriers show no band. The assay works on some samples and mysteriously fails on others.
 - **Off-target amplification.** The reference collapses paralogs and pseudogenes into one copy. Your primer may also bind a near-identical gene elsewhere (CYP2D6's pseudogene CYP2D7 is the classic case), giving extra bands.
 
-This pipeline vets primers against hundreds of real genomes at once, so both are caught before you spend bench time.
+**DESIGN** vets primers against hundreds of real genomes at once, so both are caught before you spend bench time.
 
 ## 2. What is a pangenome?
 
@@ -66,13 +69,13 @@ target region
 
 **(9) Rank.** Two independent numbers summarise across people — **on-target coverage** (does it amplify at all? the anti-dropout score) and **unique-product rate** (is it a single clean band? the specificity score). Pairs must clear hard filters, then are ordered so the best universal pair floats to the top.
 
-## 4. Design decisions
+## 4. Why it works this way
 
 **Why a pangenome, not one reference?** The failures that matter are invisible on a single reference *by definition*. You only see a SNP-under-the-primer or a collapsed paralog by looking at many genomes. On CYP2D6 this pipeline flagged both a pseudogene co-amplification and pairs that fail on everyone because the reference happens to carry a rare allele.
 
 **Why is CHM13 only a ruler?** It is complete and gap-free, which makes it a clean coordinate system — but it is still one genome, so it never decides whether a primer works.
 
-**Why mask at design time *and* test at evaluation time?** Masking is cheap insurance, but it only knows about variation *among the haplotypes*. It cannot catch a position where the **reference itself is the odd one out** — everyone agrees with each other and differs from CHM13. Design reduces the problem; evaluation proves it.
+**Why mask at design time *and* test at evaluation time?** Masking is cheap insurance, but it only knows about variation *among the haplotypes*. It cannot catch a position where the **reference itself is the odd one out** — everyone agrees with each other and differs from CHM13. Masking reduces the problem; evaluation proves it.
 
 **Why thermodynamics instead of counting sequence matches?** Raw matches wildly overstate risk. A good primer can have hundreds of approximate genome-wide matches and still be perfectly specific, because almost all have a 3′ mismatch and won't extend, and almost none have a partner primer pointing back in range. A "many hits → reject" rule discards excellent primers.
 

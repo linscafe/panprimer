@@ -87,6 +87,6 @@ Every gate applies over **evaluable** haplotypes (total − uncertain).
 
 Survivors are ordered by a transparent tie-break (coverage → uniqueness → off-target count → Primer3 penalty); see `src/pangenome_primer/rank.py`.
 
-## Verify-mode knobs (CLI flags, not in this file)
+## **VERIFY** knobs (CLI flags, not in this file)
 
 `pangenome-primer verify` reuses the `dropout` model but takes its size bounds on the command line: `--max-amplicon` (max off-target product size, default 2000 bp) and `--size-tolerance` (flag on-target sizes deviating from the expected span by more than this, default 20 bp).

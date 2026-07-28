@@ -1,4 +1,4 @@
-# 30-haplotype verify run — measured process times
+# 30-haplotype **VERIFY** run — measured process times
 
 Host: 16 logical cores, 15 GB RAM, WSL2. Disk /dev/sdd, 695 GB free at start.
 Manifest: config/samples_30.tsv (30 haplotypes, 6 per superpopulation x AFR/AMR/EAS/EUR/SAS).
@@ -26,7 +26,7 @@ built. A true cold start would be ~45 min of download and ~2h15m of grid builds,
 
 Grid quality was uniform: 90.6-92.8% of probes anchored, ~4.3 MB per grid, 0 failures.
 
-## Verify run resources
+## **VERIFY** run resources
 
 - wall 399 s for 4 pairs x 30 haplotypes = **13.3 s per haplotype** (all 4 pairs)
 - 381% CPU (the scan parallelises; projection and pairing do not)
