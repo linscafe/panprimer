@@ -364,7 +364,7 @@ def test_design_pipeline_reproduces_golden_results(tmp_path):
     outdir = tmp_path / "gapdh_out"
     subprocess.run(
         [
-            "pangenome-primer", "run",
+            "pangenome-primer", "design",
             "--target", "chr12:6544868-6548730",
             "--chm13", "hprc-r2/references/chm13v2.0.fa",
             "--samples", "demo-design-pipeline/samples.tsv",

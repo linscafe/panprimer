@@ -50,7 +50,7 @@ process MASK_DESIGN {
     script:
     def proj_args = projections.collect { "--projection ${it}" }.join(' ')
     """
-    pangenome-primer design --anchor ${anchor} ${proj_args} --out candidates.json
+    pangenome-primer design-candidates --anchor ${anchor} ${proj_args} --out candidates.json
     """
 }
 

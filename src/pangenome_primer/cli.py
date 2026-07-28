@@ -2,11 +2,16 @@
 
 * `selftest` — run the synthetic mini-pangenome end to end (no data/network). Verifies the
   engine + reporting path anywhere.
-* `run` — the real subset pipeline: anchor the target on CHM13, project onto each
+* `design` — the DESIGN pipeline end to end: anchor the target on CHM13, project onto each
   haplotype, mask variable sites, design with Primer3, evaluate genome-wide per haplotype,
   rank, and report. Needs local CHM13 + haplotype FASTAs (see config/samples.tsv).
+* `verify` — the VERIFY pipeline end to end: bring your own primer pairs, get a
+  per-haplotype amplicon-size matrix.
 
-The Nextflow workflow shells out to these same subcommands, one per stage, for scale-out.
+The Nextflow workflow shells out to the *stage* subcommands (`anchor`, `project`,
+`design-candidates`, `stage-a`, `evaluate`, `aggregate`), one per stage, for scale-out.
+Note the split: `design` is the whole pipeline, `design-candidates` only its mask +
+Primer3 stage.
 """
 from __future__ import annotations
 
@@ -71,7 +76,7 @@ def _extract_template(chm13_fasta: str, chrom: str, start: int, end: int) -> str
     return seq
 
 
-@cli.command()
+@cli.command(name="design")
 @click.option("--target", required=True,
               help="CHM13 region 'chr:start-end' or a FASTA path of the locus")
 @click.option("--chm13", "chm13_fasta", required=True, help="CHM13 v2.0 FASTA (indexed)")
@@ -93,9 +98,9 @@ def _extract_template(chm13_fasta: str, chrom: str, start: int, end: int) -> str
 @click.option("--quarto/--no-quarto", default=False, show_default=True,
               help="render the HTML report from the Markdown intermediate via Quarto (needs "
                    "`quarto` on PATH); falls back to the built-in HTML if unavailable")
-def run(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
-        target_assembly, grch38_fasta, quarto) -> None:
-    """Design + evaluate + rank primers for a target across the haplotype subset.
+def design(target, chm13_fasta, samples_tsv, outdir, mode, config_path, top_k,
+           target_assembly, grch38_fasta, quarto) -> None:
+    """DESIGN pipeline: design + evaluate + rank primers for a target across the subset.
 
     --target accepts a CHM13 chr:start-end (default), a GRCh38 chr:start-end
     (--target-assembly grch38 --grch38 <fa>), or a FASTA of the locus.
@@ -371,13 +376,16 @@ def stage_a_cmd(candidates_json, proj_files, config_path, mode, top_k, out) -> N
     click.echo(f"stage A: {len(cands)} candidates -> shortlist {k} by coverage")
 
 
-@cli.command(name="design")
+@cli.command(name="design-candidates")
 @click.option("--anchor", "anchor_json", required=True)
 @click.option("--projection", "proj_files", multiple=True, required=True)
 @click.option("--config", "config_path", default=None)
 @click.option("--out", required=True)
-def design_cmd(anchor_json, proj_files, config_path, out) -> None:
-    """Stage 3+4: variability mask + Primer3 candidate generation."""
+def design_candidates_cmd(anchor_json, proj_files, config_path, out) -> None:
+    """Stage 3+4 only: variability mask + Primer3 candidate generation.
+
+    One stage of the DESIGN pipeline, for the Nextflow fan-out. For the whole pipeline
+    in one call, use `pangenome-primer design`."""
     from .design import design_candidates
     from .mask import build_excluded_regions
     from .serialize import candidate_to_dict
@@ -647,7 +655,7 @@ def fetch_subset_cmd(sample_ids, fetch_all, per_superpop, data_dir, out_path,
     click.echo(f"\nwrote {out_path}")
     if not download:
         click.echo("next: `pangenome-primer fetch-subset --download` (or re-run with --download) "
-                   "to pull the assemblies before `run`/Nextflow.")
+                   "to pull the assemblies before `design`/`verify`/Nextflow.")
 
 
 @cli.command(name="build-anchor-grid")

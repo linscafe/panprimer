@@ -10,7 +10,7 @@ Two pipelines share one engine:
 | pipeline | command | you supply | you get |
 |---|---|---|---|
 | **VERIFY** | `pangenome-primer verify` | primer pairs | what bands they give, in whom |
-| **DESIGN** | `pangenome-primer run` | a target region | ranked primer pairs |
+| **DESIGN** | `pangenome-primer design` | a target region | ranked primer pairs |
 
 ![VERIFY output — a primer × haplotype amplicon-size matrix](docs/img/verify_matrix.svg)
 
@@ -28,9 +28,9 @@ Above: four pairs across three haplotypes. **Green** = correct amplicon, **red**
 > | Memory | ~1 GB for search and projection; the one-time grid build peaks ~11 GB |
 
 
-## ⚙️ How **DESIGN** works
+## ⚙️ How does it work
 
-Target (CHM13 region, GRCh38 region, or FASTA) → anchor on **CHM13 v2.0** → project onto each haplotype → mask variable sites → **Primer3** candidates → exhaustive genome-wide binding search → **thermodynamic**, 3′-aware dropout classification → pair into amplicons → per-haplotype status (`pass`/`dropout`/`off_target`/`multi_product`/`uncertain`) → rank by coverage + specificity → TSV/JSON + HTML.
+**DESIGN** — target (CHM13 region, GRCh38 region, or FASTA) → anchor on **CHM13 v2.0** → project onto each haplotype → mask variable sites → **Primer3** candidates → exhaustive genome-wide binding search → **thermodynamic**, 3′-aware dropout classification → pair into amplicons → per-haplotype status (`pass`/`dropout`/`off_target`/`multi_product`/`uncertain`) → rank by coverage + specificity → TSV/JSON + HTML.
 
 **VERIFY** runs on the same engine. Because you supply the primers, it skips masking and Primer3: anchor, project, then straight into the genome-wide binding search and every step after it.
 
@@ -102,7 +102,7 @@ Each pair gets a **summary** row: on-target coverage plus per-failure-mode count
 ## ▶️ Run **DESIGN**
 
 ```bash
-pangenome-primer run --target chr1:1200-1400 --chm13 CHM13v2.0.fa \
+pangenome-primer design --target chr1:1200-1400 --chm13 CHM13v2.0.fa \
     --samples config/samples.tsv --outdir results
 ```
 
@@ -110,11 +110,11 @@ pangenome-primer run --target chr1:1200-1400 --chm13 CHM13v2.0.fa \
 
 ```bash
 # GRCh38 coordinates — the slice is fetched from the GRCh38 reference and aligned to CHM13
-pangenome-primer run --target chr22:42126499-42130810 --target-assembly grch38 \
+pangenome-primer design --target chr22:42126499-42130810 --target-assembly grch38 \
     --grch38 GRCh38.fa --chm13 CHM13v2.0.fa --samples config/samples.tsv --outdir results
 
 # Just a locus sequence, no coordinates and no reference genome needed
-pangenome-primer run --target my_locus.fa --chm13 CHM13v2.0.fa --samples config/samples.tsv
+pangenome-primer design --target my_locus.fa --chm13 CHM13v2.0.fa --samples config/samples.tsv
 ```
 
 Nextflow, for per-haplotype parallelism:

@@ -1,6 +1,6 @@
 # **DESIGN** — an introduction to the primer-design pipeline
 
-> Target region in, ranked primer pairs out. Run it with `pangenome-primer run`.
+> Target region in, ranked primer pairs out. Run it with `pangenome-primer design`.
 > Already have primers? That is **VERIFY** — see [`intro_verify_pipeline.md`](intro_verify_pipeline.md).
 
 ## 1. The problem
